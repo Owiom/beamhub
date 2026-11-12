@@ -13,6 +13,7 @@ import mimetypes
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -480,11 +481,14 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
             if path == "/api/update/apply":
-                result = updater.apply_update(body.get("asset_url", ""), body.get("version", ""),
+                result = updater.stage_update(body.get("asset_url", ""),
+                                              body.get("version", ""),
                                               body.get("digest", ""))
                 self._json({"ok": bool(result.get("ok")), **result})
                 if result.get("ok"):
+                    # выходим, чтобы внешний скрипт смог подменить файлы
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    threading.Timer(1.5, lambda: os._exit(0)).start()
                 return
             if path == "/api/install":
                 self._install(body)
@@ -783,6 +787,7 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging()
+    updater.apply_staged()  # если обновление скачано — подменяем файлы и стартуем заново
 
     if args.diagnose:
         print("=== diagnose ===")
