@@ -784,6 +784,14 @@ class App:
                        activebackground=BG, activeforeground=TEXT,
                        font=("Segoe UI", 10)).pack(anchor="w", pady=6)
 
+        move_var = tk.BooleanVar(value=bool(settings.get("move_from_downloads", False)))
+        self._setting_vars["move_from_downloads"] = move_var
+        tk.Checkbutton(frame, text="Переносить архив из «Загрузок» в папку модов "
+                                   "(освобождает место на диске)",
+                       variable=move_var, bg=BG, fg=TEXT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Segoe UI", 10)).pack(anchor="w", pady=6)
+
         buttons = tk.Frame(frame, bg=BG)
         buttons.pack(fill="x", pady=10)
         tk.Button(buttons, text="Сохранить", bg=ACCENT, fg="#1a0f04", relief="flat",

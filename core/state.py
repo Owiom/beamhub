@@ -211,6 +211,8 @@ class Hub:
 
     def _install_all_worker(self, items: list[dict]) -> None:
         installed = skipped = failed = 0
+        cfg = config.load()
+        move = bool(cfg.get("move_from_downloads"))
         seen: dict[tuple[str, int], str] = {}
         for row in db.installed_list():
             key = (title_key(row.get("title") or row["filename"]), int(row.get("size") or 0))
@@ -228,7 +230,8 @@ class Hub:
                 self.emit("progress", f"[{index}/{len(items)}] ставим «{name}»…",
                           done=index - 1, total=len(items))
                 try:
-                    result = installer.install_archive(Path(item["path"]), None, config.load())
+                    result = installer.install_archive(Path(item["path"]), None, cfg,
+                                                       move_archive=move)
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
                     self.emit("error", f"«{name}»: {exc}")

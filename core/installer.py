@@ -171,7 +171,8 @@ def _drop_previous(mod_id: str, keep_key: str, cfg: dict) -> None:
         remove(row, cfg)
 
 
-def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None) -> dict:
+def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None,
+                    move_archive: bool = False) -> dict:
     """Главная операция: положить архив в папку модов и записать в библиотеку."""
     cfg = cfg or config.load()
     path = Path(path)
@@ -229,6 +230,12 @@ def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None
         db.installed_add(entry)
         if mod and mod.get("id"):
             _drop_previous(mod["id"], entry["key"], cfg)
+        if move_archive:
+            try:
+                if archive.parent.resolve() != mods_dir.resolve():
+                    archive.unlink(missing_ok=True)
+            except OSError:
+                pass
         return {"status": "installed", "installed": entry, "kind": info["kind"]}
     except RuntimeError as exc:
         return {"status": "error", "message": str(exc)}

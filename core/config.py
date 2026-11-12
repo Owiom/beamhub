@@ -56,6 +56,8 @@ DEFAULTS = {
     "mods_dir": "",
     "downloads_dir": str(Path.home() / "Downloads"),
     "auto_install": True,
+    # после установки переносить архив из «Загрузок» в папку модов (а не копировать)
+    "move_from_downloads": False,
     "game_path": "",
     "enrich_workers": 4,
     "language": "ru",
