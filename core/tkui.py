@@ -765,6 +765,8 @@ class App:
             ("update_repo", "GitHub-репозиторий обновлений (владелец/репозиторий)",
              settings.get("update_repo", "")),
             ("feedback_email", "Почта для обратной связи", settings.get("feedback_email", "")),
+            ("feedback_endpoint", "Приёмник обратной связи (https-адрес, необязательно)",
+             settings.get("feedback_endpoint", "")),
         ]
         for key, label, value in rows:
             block = tk.Frame(frame, bg=BG)
@@ -918,6 +920,14 @@ class App:
                        font=("Segoe UI", 10), wrap="word")
         note.pack(fill="x", padx=18)
 
+        contact_row = tk.Frame(window, bg=BG)
+        contact_row.pack(fill="x", padx=18, pady=(6, 0))
+        tk.Label(contact_row, text="Куда ответить (необязательно):", bg=BG, fg=DIM,
+                 font=("Segoe UI", 9)).pack(side="left")
+        contact = tk.Entry(contact_row, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+                           font=("Segoe UI", 9))
+        contact.pack(side="left", fill="x", expand=True, padx=8)
+
         options = tk.Frame(window, bg=BG)
         options.pack(fill="x", padx=18, pady=8)
         paths_var = tk.BooleanVar(value=False)
@@ -950,12 +960,45 @@ class App:
                     def apply() -> None:
                         preview.delete("1.0", "end")
                         preview.insert("1.0", text)
-                        status.configure(
-                            text=(f"Почта: {data.get('email')}" if data.get("email")
-                                  else "Почта не задана в настройках — доступен только GitHub"))
+                        ready = bool(data.get("endpoint"))
+                        send_button.configure(state=("normal" if ready else "disabled"))
+                        if data.get("email"):
+                            mail_hint = f"почта {data.get('email')}"
+                        else:
+                            mail_hint = "почта не задана"
+                        if ready:
+                            extra = "отправка прямо из окна — без браузера"
+                        else:
+                            extra = "приёмник не настроен, доступны GitHub и письмо"
+                        status.configure(text=f"{extra} · {mail_hint}")
                     self.root.after(0, apply)
                 except Exception as exc:  # noqa: BLE001
                     self.root.after(0, lambda: status.configure(text=f"Ошибка: {exc}"))
+            threading.Thread(target=work, daemon=True).start()
+
+        def send_here() -> None:
+            send_button.configure(state="disabled", text="Отправляю…")
+
+            def work() -> None:
+                try:
+                    result = self.api.post("/api/feedback/send", {
+                        "report": preview.get("1.0", "end").strip(),
+                        "title": (note.get("1.0", "end").strip().splitlines() or [""])[0][:80],
+                        "contact": contact.get().strip(),
+                    })
+
+                    def apply() -> None:
+                        send_button.configure(
+                            state=("normal" if not result.get("ok") else "disabled"),
+                            text=("Отправлено" if result.get("ok") else "Отправить"))
+                        status.configure(text=result.get("message", ""))
+                        if result.get("ok"):
+                            messagebox.showinfo("Спасибо", "Отчёт отправлен автору.")
+                    self.root.after(0, apply)
+                except Exception as exc:  # noqa: BLE001
+                    self.root.after(0, lambda: (
+                        send_button.configure(state="normal", text="Отправить"),
+                        status.configure(text=f"Ошибка: {exc}")))
             threading.Thread(target=work, daemon=True).start()
 
         def send(target: str) -> None:
@@ -974,12 +1017,16 @@ class App:
 
         buttons = tk.Frame(window, bg=BG)
         buttons.pack(fill="x", padx=18, pady=(4, 16))
-        tk.Button(buttons, text="Сообщить о проблеме (GitHub)", bg=ACCENT, fg="#1a0f04",
-                  relief="flat", font=("Segoe UI", 10, "bold"), padx=14, pady=6, cursor="hand2",
-                  command=lambda: send("github")).pack(side="left")
+        send_button = tk.Button(buttons, text="Отправить", bg=ACCENT, fg="#1a0f04",
+                                relief="flat", font=("Segoe UI", 10, "bold"), padx=14, pady=6,
+                                cursor="hand2", state="disabled", command=send_here)
+        send_button.pack(side="left")
+        tk.Button(buttons, text="Сообщить о проблеме (GitHub)", bg=PANEL, fg=TEXT, relief="flat",
+                  font=("Segoe UI", 10), padx=12, pady=6, cursor="hand2",
+                  command=lambda: send("github")).pack(side="left", padx=8)
         tk.Button(buttons, text="Написать без аккаунта", bg=PANEL, fg=TEXT, relief="flat",
                   font=("Segoe UI", 10), padx=12, pady=6, cursor="hand2",
-                  command=lambda: send("mail")).pack(side="left", padx=8)
+                  command=lambda: send("mail")).pack(side="left")
 
         refresh()
         note.focus_set()

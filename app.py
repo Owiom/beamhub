@@ -476,7 +476,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "report": report, "title": title,
                             "issue": feedback.issue_link(report, title),
                             "mail": feedback.mail_link(email, report, title),
-                            "email": email, "has_log": bool(feedback.log_tail())})
+                            "email": email, "has_log": bool(feedback.log_tail()),
+                            "endpoint": bool((config.load().get("feedback_endpoint") or "").strip())})
                 return
             self._error("Не найдено", 404)
         except Exception as exc:  # noqa: BLE001
@@ -599,6 +600,15 @@ class Handler(BaseHTTPRequestHandler):
                 created = db.get_mod(mod["id"]) or mod
                 dups = db.title_key_counts({created.get("title_key") or ""})
                 self._json({"ok": True, "item": mod_payload(created, db.favorite_ids(), dups)})
+                return
+            if path == "/api/feedback/send":
+                result = feedback.send_report(
+                    config.load().get("feedback_endpoint") or "",
+                    body.get("report") or feedback.build_report(),
+                    body.get("title") or feedback.subject(),
+                    body.get("contact") or "",
+                )
+                self._json(result)
                 return
             if path == "/api/feedback/open":
                 target = body.get("target") or "github"
