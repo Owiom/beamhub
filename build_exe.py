@@ -13,6 +13,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+# на западных консолях (cp1252) русские print падают — принудительно UTF-8
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        pass
+
 ROOT = Path(__file__).resolve().parent
 SEED_DIR = ROOT / "seed"
 SEED_DB = SEED_DIR / "beamhub.db"

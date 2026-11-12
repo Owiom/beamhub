@@ -639,6 +639,12 @@ def free_port(preferred: int) -> int:
 
 def setup_logging() -> None:
     """В собранном exe нет консоли — весь вывод пишем в %LOCALAPPDATA%\\BeamHub\\beamhub.log."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream is not None:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
     if sys.stdout is not None and sys.stderr is not None:
         return
     try:
