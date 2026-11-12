@@ -500,6 +500,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/install":
                 self._install(body)
                 return
+            if path == "/api/inbox/install-all":
+                self._json({"ok": True, **HUB.install_all_inbox()})
+                return
             if path == "/api/install-file":
                 target = Path(body.get("path", "")).resolve()
                 downloads = Path(config.load().get("downloads_dir") or Path.home() / "Downloads")

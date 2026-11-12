@@ -262,6 +262,11 @@ class App:
                   font=("Segoe UI", 9), anchor="w", padx=14, pady=6, cursor="hand2",
                   command=self.on_quit).pack(side="bottom", fill="x", padx=8)
 
+    def refresh_all(self) -> None:
+        """Перерисовать текущую вкладку и обновить счётчики в меню."""
+        self.switch(self.view)
+        self.refresh_meta()
+
     # ---------------------------------------------------------------- навигация
     def switch(self, view: str) -> None:
         self.view = view
@@ -678,7 +683,23 @@ class App:
             tk.Label(frame, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
             return
         items = data.get("items", [])
-        self.count_label.configure(text=f"{len(items)} архивов")
+        valid = [item for item in items if item.get("valid")]
+        total_size = sum(int(item.get("size") or 0) for item in valid)
+        self.count_label.configure(text=f"{len(items)} архивов · к установке {len(valid)}")
+
+        toolbar = tk.Frame(frame, bg=BG)
+        toolbar.pack(fill="x", pady=(0, 8))
+        tk.Label(toolbar,
+                 text="Здесь лежат архивы из папки «Загрузки» — они ещё не установлены. "
+                      "Библиотека — это то, что уже попало в папку модов игры.",
+                 bg=BG, fg=DIM, font=("Segoe UI", 9), wraplength=700, justify="left",
+                 anchor="w").pack(side="left", fill="x", expand=True)
+        if valid:
+            tk.Button(toolbar, text=f"Установить все ({len(valid)})", bg=ACCENT, fg="#1a0f04",
+                      relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                      cursor="hand2", command=lambda: self.install_all(valid, total_size)
+                      ).pack(side="right")
+
         if not items:
             tk.Label(frame, text="Новых архивов нет.", bg=BG, fg=MUTED,
                      font=("Segoe UI", 11)).pack(anchor="w", pady=20)
@@ -698,6 +719,24 @@ class App:
                                state=("normal" if row.get("valid") else "disabled"),
                                command=lambda r=row: self.install_file(r))
             button.pack(side="left", padx=10)
+
+    def install_all(self, items: list[dict], total_size: int) -> None:
+        size_text = human_size(total_size) if total_size else ""
+        if not messagebox.askyesno(
+                "BeamHub",
+                f"Установить {len(items)} архивов ({size_text}) в папку модов?\n\n"
+                "Уже установленное и копии с одинаковым названием будут пропущены. "
+                "Это может занять несколько минут."):
+            return
+        try:
+            result = self.api.post("/api/inbox/install-all", {})
+        except Exception as exc:  # noqa: BLE001
+            self.set_status(f"Ошибка: {exc}")
+            return
+        if not result.get("started"):
+            self.set_status(result.get("reason") or "Не удалось начать установку")
+            return
+        self.set_status(f"Ставлю {result.get('total', len(items))} архивов…")
 
     def install_file(self, row: dict) -> None:
         def work() -> None:
@@ -1076,6 +1115,15 @@ class App:
                 if events:
                     last = events[-1]
                     self.root.after(0, lambda t=last.get("text", ""): self.set_status(t))
+                    for event in events:
+                        if event.get("kind") == "inbox_done":
+                            text = (f"Установлено: {event.get('installed', 0)}\n"
+                                    f"Пропущено: {event.get('skipped', 0)}\n"
+                                    f"Ошибок: {event.get('failed', 0)}")
+                            self.root.after(0, lambda t=text: messagebox.showinfo(
+                                "Установка архивов", t))
+                            self.root.after(0, self.refresh_all)
+                            break
             except Exception:  # noqa: BLE001
                 pass
             finally:

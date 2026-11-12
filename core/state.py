@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 from collections import deque
 from pathlib import Path
 
 from . import config, db, installer
-from .util import human_size, now_ts
+from .util import human_size, now_ts, title_key
 
 ARCHIVE_SUFFIXES = {".zip", ".rar", ".7z"}
+COPY_SUFFIX = re.compile(r"\s*\(\d+\)\s*$")
 
 
 class Hub:
@@ -28,6 +30,7 @@ class Hub:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._inbox_cache: dict[str, tuple[tuple[int, int], dict]] = {}
+        self._bulk_running = False
 
     # ---------- события ----------
     def touch(self) -> None:
@@ -191,6 +194,67 @@ class Hub:
         return False
 
     # ---------- инбокс ----------
+    def install_all_inbox(self) -> dict:
+        """Поставить всё, что лежит в «Загрузках» и похоже на мод."""
+        if self._bulk_running:
+            return {"started": False, "reason": "Установка уже идёт"}
+        items = [item for item in self.inbox() if item.get("valid")]
+        if not items:
+            return {"started": False, "reason": "В «Загрузках» нет архивов модов"}
+        # сначала ставим файлы с «чистым» именем, копии браузера «(1)» уйдут в пропуск
+        items.sort(key=lambda item: (bool(COPY_SUFFIX.search(Path(item["name"]).stem)),
+                                     item["name"].lower()))
+        self._bulk_running = True
+        threading.Thread(target=self._install_all_worker, args=(items,), daemon=True).start()
+        return {"started": True, "total": len(items),
+                "size": sum(int(item.get("size") or 0) for item in items)}
+
+    def _install_all_worker(self, items: list[dict]) -> None:
+        installed = skipped = failed = 0
+        seen: dict[tuple[str, int], str] = {}
+        for row in db.installed_list():
+            key = (title_key(row.get("title") or row["filename"]), int(row.get("size") or 0))
+            seen.setdefault(key, row["filename"])
+
+        try:
+            for index, item in enumerate(items, start=1):
+                name = item["name"]
+                key = (title_key(name), int(item.get("size") or 0))
+                if key in seen:
+                    skipped += 1
+                    self.emit("progress", f"[{index}/{len(items)}] «{name}» — уже есть: "
+                                          f"{seen[key]}", done=index, total=len(items))
+                    continue
+                self.emit("progress", f"[{index}/{len(items)}] ставим «{name}»…",
+                          done=index - 1, total=len(items))
+                try:
+                    result = installer.install_archive(Path(item["path"]), None, config.load())
+                except Exception as exc:  # noqa: BLE001
+                    failed += 1
+                    self.emit("error", f"«{name}»: {exc}")
+                    continue
+                if result["status"] == "installed":
+                    installed += 1
+                    seen[key] = name
+                    self.emit("installed", f"Установлено: {result['installed']['title']}")
+                elif result["status"] == "duplicate":
+                    skipped += 1
+                else:
+                    failed += 1
+                    self.emit("error", f"«{name}»: {result.get('message', 'не установился')}")
+        finally:
+            self._bulk_running = False
+            self._inbox_cache.clear()
+            try:
+                from . import matcher
+
+                matcher.match_all()
+            except Exception:  # noqa: BLE001
+                pass
+            self.emit("inbox_done",
+                      f"Готово: установлено {installed}, пропущено {skipped}, ошибок {failed}",
+                      installed=installed, skipped=skipped, failed=failed, total=len(items))
+
     def inbox(self) -> list[dict]:
         cfg = config.load()
         folder = Path(cfg.get("downloads_dir") or Path.home() / "Downloads")
