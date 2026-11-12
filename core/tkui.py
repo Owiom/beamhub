@@ -22,6 +22,8 @@ MUTED = "#8d93a1"
 DIM = "#6b7280"
 ACCENT = "#ff7a1a"
 GREEN = "#35c46b"
+HOVER_BG = "#1b1f28"
+ACTIVE_BG = "#232833"
 DUP_BG = "#2a1618"
 DUP_LINE = "#7a2f33"
 SOURCE_NAMES = {"playground": "playground.ru", "modsgaming": "modsgaming.ru",
@@ -200,12 +202,16 @@ class App:
         self.filter_game = tk.BooleanVar(value=False)
         self.filter_image = tk.BooleanVar(value=False)
         self.filter_fav = tk.BooleanVar(value=False)
-        for text, var in (("0.40.x", self.filter_game), ("с обложкой", self.filter_image),
-                          ("избранное", self.filter_fav)):
-            tk.Checkbutton(filters, text=text, variable=var, bg=BG, fg=MUTED,
-                           selectcolor=PANEL, activebackground=BG, activeforeground=TEXT,
-                           font=("Segoe UI", 9), command=self.on_filters,
-                           padx=4).pack(side="left")
+        self.filter_chips: dict[str, tk.Button] = {}
+        for text, var, key in (("0.40.x", self.filter_game, "game"),
+                               ("с обложкой", self.filter_image, "image"),
+                               ("избранное", self.filter_fav, "fav")):
+            chip = tk.Button(filters, text=text, bg=PANEL, fg=MUTED, relief="flat",
+                             font=("Segoe UI", 9), padx=10, pady=3, cursor="hand2",
+                             activebackground=ACTIVE_BG, activeforeground=TEXT, bd=0,
+                             command=lambda v=var, k=key: self._toggle_chip(v, k))
+            chip.pack(side="left", padx=3)
+            self.filter_chips[key] = chip
 
         self.content = tk.Frame(self.main, bg=BG)
         self.content.grid(row=1, column=0, sticky="nsew", padx=18, pady=(4, 0))
@@ -223,6 +229,12 @@ class App:
                                font=("Segoe UI", 9), padx=14, pady=6)
         self.status.grid(row=2, column=0, sticky="ew")
 
+    NAV_ITEMS = (("catalog", "Каталог", "grid"),
+                 ("library", "Библиотека", "book"),
+                 ("updates", "Обновления", "arrow"),
+                 ("inbox", "Загрузки", "tray"),
+                 ("settings", "Настройки", "gear"))
+
     def _build_sidebar(self) -> None:
         brand = tk.Frame(self.sidebar, bg=SOFT)
         brand.pack(fill="x", padx=14, pady=(16, 10))
@@ -235,19 +247,32 @@ class App:
         tk.Label(titles, text="каталог модов BeamNG.drive", bg=SOFT, fg=DIM,
                  font=("Segoe UI", 8), anchor="w").pack(anchor="w")
 
-        self.nav_buttons: dict[str, tk.Button] = {}
-        for key, label in (("catalog", "Каталог"), ("library", "Библиотека"),
-                           ("updates", "Обновления"), ("inbox", "Загрузки"),
-                           ("settings", "Настройки")):
-            button = tk.Button(self.sidebar, text=label, anchor="w", bg=SOFT, fg=MUTED,
-                               activebackground="#191c24", activeforeground=TEXT,
-                               relief="flat", font=("Segoe UI", 11), padx=14, pady=7,
-                               cursor="hand2", command=lambda k=key: self.switch(k))
-            button.pack(fill="x", padx=8, pady=1)
-            self.nav_buttons[key] = button
+        self.nav_buttons: dict[str, tk.Frame] = {}
+        self.nav_parts: dict[str, dict] = {}
+        for key, title, icon in self.NAV_ITEMS:
+            row = tk.Frame(self.sidebar, bg=SOFT, cursor="hand2", height=36)
+            row.pack(fill="x", padx=6, pady=1)
+            row.pack_propagate(False)
+            bar = tk.Canvas(row, width=3, bg=SOFT, highlightthickness=0, bd=0)
+            bar.pack(side="left", fill="y")
+            icon_canvas = tk.Canvas(row, width=24, height=36, bg=SOFT, highlightthickness=0, bd=0)
+            icon_canvas.pack(side="left", padx=(10, 4))
+            label = tk.Label(row, text=title, bg=SOFT, fg=MUTED, font=("Segoe UI", 10), anchor="w")
+            label.pack(side="left", fill="x", expand=True)
+            badge = tk.Label(row, text="", bg=SOFT, fg=DIM, font=("Segoe UI", 8, "bold"), padx=6)
+            badge.pack(side="right", padx=(4, 8))
+            self._draw_icon(icon_canvas, icon, MUTED)
+            self.nav_parts[key] = {"row": row, "bar": bar, "icon": icon_canvas, "kind": icon,
+                                   "label": label, "badge": badge}
+            self.nav_buttons[key] = row
+            for widget in (row, bar, icon_canvas, label, badge):
+                widget.bind("<Button-1>", lambda _e, k=key: self.switch(k))
+                widget.bind("<Enter>", lambda _e, k=key: self._nav_hover(k, True))
+                widget.bind("<Leave>", lambda _e, k=key: self._nav_hover(k, False))
 
+        tk.Frame(self.sidebar, bg=LINE, height=1).pack(fill="x", padx=14, pady=(12, 8))
         tk.Label(self.sidebar, text="КАТЕГОРИИ", bg=SOFT, fg=DIM, font=("Segoe UI", 8),
-                 anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+                 anchor="w").pack(fill="x", padx=18, pady=(4, 4))
         self.cat_frame = tk.Frame(self.sidebar, bg=SOFT)
         self.cat_frame.pack(fill="both", expand=True, padx=8)
 
@@ -262,6 +287,136 @@ class App:
                   font=("Segoe UI", 9), anchor="w", padx=14, pady=6, cursor="hand2",
                   command=self.on_quit).pack(side="bottom", fill="x", padx=8)
 
+    def _draw_icon(self, canvas: tk.Canvas, kind: str, color: str) -> None:
+        """Иконки рисуем сами: emoji в tkinter выглядят по-разному на разных Windows."""
+        canvas.delete("all")
+        if kind == "grid":
+            for dx, dy in ((0, 0), (10, 0), (0, 10), (10, 10)):
+                canvas.create_rectangle(5 + dx, 10 + dy, 11 + dx, 16 + dy, fill=color, width=0)
+        elif kind == "book":
+            canvas.create_rectangle(4, 9, 10, 27, fill=color, width=0)
+            canvas.create_rectangle(12, 9, 18, 27, fill=color, width=0)
+        elif kind == "arrow":
+            canvas.create_line(11, 8, 11, 23, fill=color, width=2)
+            canvas.create_line(6, 18, 11, 24, 16, 18, fill=color, width=2)
+        elif kind == "tray":
+            canvas.create_line(4, 22, 4, 27, 18, 27, 18, 22, fill=color, width=2)
+            canvas.create_line(11, 7, 11, 18, fill=color, width=2)
+            canvas.create_line(6, 14, 11, 20, 16, 14, fill=color, width=2)
+        elif kind == "gear":
+            canvas.create_oval(6, 12, 16, 22, outline=color, width=2)
+            for coords in ((10, 5, 12, 9), (10, 25, 12, 29), (3, 16, 6, 18), (16, 16, 19, 18)):
+                canvas.create_line(*coords, fill=color, width=2)
+
+    def _nav_background(self, key: str, hover: bool = False) -> str:
+        if key == self.view:
+            return ACTIVE_BG
+        return HOVER_BG if hover else SOFT
+
+    def _paint_nav(self, key: str, hover: bool = False) -> None:
+        parts = self.nav_parts.get(key)
+        if not parts:
+            return
+        active = key == self.view
+        bg = self._nav_background(key, hover)
+        for name in ("row", "bar", "icon", "label"):
+            parts[name].configure(bg=bg)
+        if not parts["badge"].cget("text"):
+            parts["badge"].configure(bg=bg)
+        parts["label"].configure(fg=(TEXT if active else (TEXT if hover else MUTED)),
+                                 font=("Segoe UI", 10, "bold" if active else "normal"))
+        self._draw_icon(parts["icon"], parts["kind"], ACCENT if active else (TEXT if hover else MUTED))
+        parts["bar"].delete("all")
+        if active:
+            parts["bar"].create_rectangle(0, 7, 3, 29, fill=ACCENT, width=0)
+
+    def _nav_hover(self, key: str, on: bool) -> None:
+        if key != self.view:
+            self._paint_nav(key, hover=on)
+
+    def _set_active_nav(self, view: str) -> None:
+        for key in self.nav_parts:
+            self._paint_nav(key)
+            parts = self.nav_parts[key]
+            parts["bar"].delete("all")
+            if key == view:
+                parts["bar"].create_rectangle(0, 7, 3, 29, fill=ACCENT, width=0)
+
+    def set_badge(self, key: str, value: int | str, accent: bool = False) -> None:
+        parts = self.nav_parts.get(key)
+        if not parts:
+            return
+        text = str(value) if value else ""
+        if text:
+            parts["badge"].configure(text=text, bg=(ACCENT if accent else "#2a2f3a"),
+                                     fg=("#1a0f04" if accent else DIM))
+        else:
+            parts["badge"].configure(text="", bg=self._nav_background(key))
+
+    def toast(self, text: str, kind: str = "info") -> None:
+        """Всплывающее уведомление снизу справа — чтобы события не терялись в строке статуса."""
+        palette = {"info": (PANEL, TEXT), "ok": ("#16241a", "#b8e6c2"),
+                   "error": ("#2a1518", "#ffb3b3")}
+        bg, fg = palette.get(kind, palette["info"])
+        try:
+            window = tk.Toplevel(self.root)
+            window.overrideredirect(True)
+            window.attributes("-topmost", True)
+            frame = tk.Frame(window, bg=bg, highlightthickness=1, highlightbackground=LINE)
+            frame.pack(fill="both", expand=True)
+            tk.Label(frame, text=text, bg=bg, fg=fg, font=("Segoe UI", 9),
+                     wraplength=320, justify="left", padx=12, pady=8).pack()
+            window.update_idletasks()
+            width = min(360, frame.winfo_reqwidth())
+            height = frame.winfo_reqheight()
+            x = self.root.winfo_rootx() + self.root.winfo_width() - width - 40
+            y = self.root.winfo_rooty() + self.root.winfo_height() - height - 62
+            window.geometry(f"{width}x{height}+{x}+{y}")
+            window.attributes("-alpha", 0.0)
+
+            def fade(step: float = 0.0) -> None:
+                if step >= 1.0:
+                    window.after(1800, lambda: close(1.0))
+                    return
+                try:
+                    window.attributes("-alpha", step)
+                except tk.TclError:
+                    return
+                window.after(30, lambda: fade(step + 0.12))
+
+            def close(step: float) -> None:
+                if step <= 0.0:
+                    window.destroy()
+                    return
+                try:
+                    window.attributes("-alpha", step)
+                except tk.TclError:
+                    window.destroy()
+                    return
+                window.after(30, lambda: close(step - 0.12))
+
+            fade()
+        except Exception:  # noqa: BLE001
+            self.set_status(text)
+
+    def _toggle_chip(self, var: tk.BooleanVar, key: str) -> None:
+        var.set(not var.get())
+        chip = self.filter_chips.get(key)
+        if chip is not None:
+            on = bool(var.get())
+            chip.configure(bg=("#3a2410" if on else PANEL),
+                           fg=("#ffc79b" if on else MUTED))
+        self.on_filters()
+
+    def _paint_chips(self) -> None:
+        for key, var in (("game", self.filter_game), ("image", self.filter_image),
+                         ("fav", self.filter_fav)):
+            chip = self.filter_chips.get(key)
+            if chip is not None:
+                on = bool(var.get())
+                chip.configure(bg=("#3a2410" if on else PANEL),
+                               fg=("#ffc79b" if on else MUTED))
+
     def refresh_all(self) -> None:
         """Перерисовать текущую вкладку и обновить счётчики в меню."""
         self.switch(self.view)
@@ -270,9 +425,7 @@ class App:
     # ---------------------------------------------------------------- навигация
     def switch(self, view: str) -> None:
         self.view = view
-        for key, button in self.nav_buttons.items():
-            button.configure(bg="#22262f" if key == view else SOFT,
-                             fg=TEXT if key == view else MUTED)
+        self._set_active_nav(view)
         titles = {"catalog": "Каталог модов", "library": "Библиотека",
                   "updates": "Обновления", "inbox": "Загрузки", "settings": "Настройки"}
         self.title_label.configure(text=titles[view])
@@ -439,7 +592,37 @@ class App:
 
         for widget in (thumb, label):
             widget.bind("<Double-Button-1>", lambda _e, i=item: self.details(i))
+        self._bind_card_hover(card, duplicate)
         return card
+
+    def _bind_card_hover(self, card: tk.Frame, duplicate: bool) -> None:
+        """Подсветка карточки при наведении — без мигания, когда ведёшь по дочерним виджетам."""
+        normal = DUP_LINE if duplicate else LINE
+
+        def inside() -> bool:
+            x, y = card.winfo_pointerxy()
+            widget = card.winfo_containing(x, y)
+            while widget is not None:
+                if widget is card:
+                    return True
+                widget = getattr(widget, "master", None)
+            return False
+
+        def enter(_event=None) -> None:
+            card.configure(highlightbackground="#55617a")
+
+        def leave(_event=None) -> None:
+            card.after(30, lambda: None if inside() else card.configure(highlightbackground=normal))
+
+        widgets = [card]
+        pending = list(card.winfo_children())
+        while pending:
+            widget = pending.pop()
+            widgets.append(widget)
+            pending.extend(widget.winfo_children())
+        for widget in widgets:
+            widget.bind("<Enter>", enter, add="+")
+            widget.bind("<Leave>", leave, add="+")
 
     def _request_image(self, url: str, label: tk.Label, item: dict | None = None) -> None:
         cached = self._images.get(url)
@@ -1132,10 +1315,10 @@ class App:
     def _apply_meta(self, state: dict) -> None:
         self.foot_label.configure(text=f"Папка модов:\n{state.get('settings', {}).get('mods_dir', '')}")
         counts = state.get("counts", {})
-        self.nav_buttons["catalog"].configure(text=f"Каталог   {counts.get('mods', 0)}")
-        self.nav_buttons["library"].configure(text=f"Библиотека   {counts.get('installed', 0)}")
-        self.nav_buttons["updates"].configure(text=f"Обновления   {state.get('updates', 0)}")
-        self.nav_buttons["inbox"].configure(text=f"Загрузки   {state.get('inbox_count', 0)}")
+        self.set_badge("catalog", counts.get("mods", 0))
+        self.set_badge("library", counts.get("installed", 0))
+        self.set_badge("updates", state.get("updates", 0), accent=bool(state.get("updates")))
+        self.set_badge("inbox", state.get("inbox_count", 0))
 
         sources = state.get("sources", [])
         if sources:
@@ -1186,7 +1369,13 @@ class App:
                     last = events[-1]
                     self.root.after(0, lambda t=last.get("text", ""): self.set_status(t))
                     for event in events:
-                        if event.get("kind") == "inbox_done":
+                        kind = event.get("kind")
+                        text = event.get("text", "")
+                        if kind in ("installed", "error", "duplicate", "inbox_done"):
+                            tone = "error" if kind == "error" else ("ok" if kind == "installed"
+                                                                    else "info")
+                            self.root.after(0, lambda t=text, k=tone: self.toast(t, k))
+                        if kind == "inbox_done":
                             text = (f"Установлено: {event.get('installed', 0)}\n"
                                     f"Пропущено: {event.get('skipped', 0)}\n"
                                     f"Ошибок: {event.get('failed', 0)}")
