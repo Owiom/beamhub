@@ -803,7 +803,7 @@ class App:
         tk.Button(buttons, text="Проверить обновления", bg=PANEL, fg=TEXT, relief="flat",
                   font=("Segoe UI", 10), padx=12, pady=6, cursor="hand2",
                   command=lambda: self.check_updates(silent=False)).pack(side="left")
-        tk.Button(buttons, text="Написать автору", bg=PANEL, fg=TEXT, relief="flat",
+        tk.Button(buttons, text="Обратная связь", bg=PANEL, fg=TEXT, relief="flat",
                   font=("Segoe UI", 10), padx=12, pady=6, cursor="hand2",
                   command=self.send_feedback).pack(side="left", padx=8)
         tk.Button(buttons, text="Экспорт списка", bg=PANEL, fg=TEXT, relief="flat",
@@ -906,20 +906,83 @@ class App:
         self.root.after(400, self.root.destroy)
 
     def send_feedback(self) -> None:
-        def work() -> None:
+        """Диалог обратной связи: превью отчёта и две кнопки — GitHub или почта."""
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("Обратная связь")
+        window.geometry("720x620")
+        window.transient(self.root)
+
+        tk.Label(window, text="Что случилось?", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 11, "bold"), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+        note = tk.Text(window, height=3, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+                       font=("Segoe UI", 10), wrap="word")
+        note.pack(fill="x", padx=18)
+
+        options = tk.Frame(window, bg=BG)
+        options.pack(fill="x", padx=18, pady=8)
+        paths_var = tk.BooleanVar(value=False)
+        log_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(options, text="добавить путь к игре", variable=paths_var, bg=BG, fg=MUTED,
+                       selectcolor=PANEL, activebackground=BG, activeforeground=TEXT,
+                       font=("Segoe UI", 9), command=lambda: refresh()).pack(side="left")
+        tk.Checkbutton(options, text="добавить хвост лога", variable=log_var, bg=BG, fg=MUTED,
+                       selectcolor=PANEL, activebackground=BG, activeforeground=TEXT,
+                       font=("Segoe UI", 9), command=lambda: refresh()).pack(side="left", padx=12)
+
+        tk.Label(window, text="Так это уйдёт автору (можно поправить):", bg=BG, fg=DIM,
+                 font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=18)
+        preview = tk.Text(window, height=16, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+                          font=("Consolas", 9), wrap="word")
+        preview.pack(fill="both", expand=True, padx=18, pady=(2, 8))
+
+        status = tk.Label(window, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9), anchor="w")
+        status.pack(fill="x", padx=18)
+
+        def refresh() -> None:
+            def work() -> None:
+                try:
+                    query = {"paths": "1" if paths_var.get() else "0",
+                             "log": "1" if log_var.get() else "0",
+                             "note": note.get("1.0", "end").strip()}
+                    data = self.api.get("/api/feedback", **query)
+                    text = data.get("report", "")
+
+                    def apply() -> None:
+                        preview.delete("1.0", "end")
+                        preview.insert("1.0", text)
+                        status.configure(
+                            text=(f"Почта: {data.get('email')}" if data.get("email")
+                                  else "Почта не задана в настройках — доступен только GitHub"))
+                    self.root.after(0, apply)
+                except Exception as exc:  # noqa: BLE001
+                    self.root.after(0, lambda: status.configure(text=f"Ошибка: {exc}"))
+            threading.Thread(target=work, daemon=True).start()
+
+        def send(target: str) -> None:
             try:
-                data = self.api.get("/api/feedback")
-                if not data.get("ok"):
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        "Обратная связь",
-                        data.get("message", "Почта не настроена.") +
-                        "\n\nУкажите её в поле «Почта для обратной связи»."))
+                result = self.api.post("/api/feedback/open", {
+                    "target": target,
+                    "report": preview.get("1.0", "end").strip(),
+                    "title": (note.get("1.0", "end").strip().splitlines() or [""])[0][:80],
+                })
+                if not result.get("ok"):
+                    status.configure(text=result.get("message", "Не удалось открыть"))
                     return
-                self.root.after(0, lambda: self.set_status(
-                    "Открыл почтовый клиент — письмо уже с версией и путями"))
+                status.configure(text="Открыл в браузере")
             except Exception as exc:  # noqa: BLE001
-                self.root.after(0, lambda: self.set_status(f"Ошибка: {exc}"))
-        threading.Thread(target=work, daemon=True).start()
+                status.configure(text=f"Ошибка: {exc}")
+
+        buttons = tk.Frame(window, bg=BG)
+        buttons.pack(fill="x", padx=18, pady=(4, 16))
+        tk.Button(buttons, text="Сообщить о проблеме (GitHub)", bg=ACCENT, fg="#1a0f04",
+                  relief="flat", font=("Segoe UI", 10, "bold"), padx=14, pady=6, cursor="hand2",
+                  command=lambda: send("github")).pack(side="left")
+        tk.Button(buttons, text="Написать без аккаунта", bg=PANEL, fg=TEXT, relief="flat",
+                  font=("Segoe UI", 10), padx=12, pady=6, cursor="hand2",
+                  command=lambda: send("mail")).pack(side="left", padx=8)
+
+        refresh()
+        note.focus_set()
 
     def export_library(self) -> None:
         def work() -> None:

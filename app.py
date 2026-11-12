@@ -53,7 +53,7 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import config, db, enrich, installer, matcher, security, updater  # noqa: E402
+    from core import config, db, enrich, feedback, installer, matcher, security, updater  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -85,6 +85,7 @@ WEB_DIR = config.APP_DIR / "web"
 CACHE_DIR = config.DATA_DIR / "img-cache"
 SEED_DB = config.APP_DIR / "seed" / "beamhub.db"
 _IMG_FAILED: dict[str, float] = {}
+_IMG_SLOTS = threading.Semaphore(3)  # не больше трёх загрузок обложек одновременно
 
 
 # ---------------------------------------------------------------- helpers
@@ -160,13 +161,16 @@ def proxy_image(url: str) -> tuple[bytes, str]:
     if not security.resolve_is_public(parts.hostname or ""):
         raise RuntimeError("Адрес картинки ведёт в локальную сеть")
     referer = f"{parts.scheme}://{parts.netloc}/"
-    try:
-        raw = fetch_bytes(url, referer=referer, timeout=10, safe=True)
-    except Exception:
-        _IMG_FAILED[url] = now
-        if len(_IMG_FAILED) > 500:
-            _IMG_FAILED.clear()
-        raise
+    # beamngland отдаёт картинки очень медленно (~30 КБ за 15 с) — даём запас
+    # и не пускаем больше трёх одновременных загрузок, иначе все упираются в таймаут
+    with _IMG_SLOTS:
+        try:
+            raw = fetch_bytes(url, referer=referer, timeout=25, safe=True)
+        except Exception:
+            _IMG_FAILED[url] = now
+            if len(_IMG_FAILED) > 500:
+                _IMG_FAILED.clear()
+            raise
     content_type = "image/jpeg"
     if raw[:8] == b"\x89PNG\r\n\x1a\n":
         content_type, ext = "image/png", ".png"
@@ -463,13 +467,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, **updater.check()})
                 return
             if path == "/api/feedback":
-                url = updater.feedback_url()
-                if not url:
-                    self._json({"ok": False,
-                                "message": "Почта для обратной связи не задана в настройках."})
-                    return
-                open_in_browser(url)
-                self._json({"ok": True, "url": url})
+                email = (config.load().get("feedback_email") or "").strip()
+                note = urllib.parse.parse_qs(parsed.query).get("note", [""])[0]
+                with_log = urllib.parse.parse_qs(parsed.query).get("log", ["1"])[0] != "0"
+                with_paths = urllib.parse.parse_qs(parsed.query).get("paths", ["1"])[0] != "0"
+                report = feedback.build_report(note, with_paths, with_log)
+                title = feedback.subject(note)
+                self._json({"ok": True, "report": report, "title": title,
+                            "issue": feedback.issue_link(report, title),
+                            "mail": feedback.mail_link(email, report, title),
+                            "email": email, "has_log": bool(feedback.log_tail())})
                 return
             self._error("Не найдено", 404)
         except Exception as exc:  # noqa: BLE001
@@ -592,6 +599,22 @@ class Handler(BaseHTTPRequestHandler):
                 created = db.get_mod(mod["id"]) or mod
                 dups = db.title_key_counts({created.get("title_key") or ""})
                 self._json({"ok": True, "item": mod_payload(created, db.favorite_ids(), dups)})
+                return
+            if path == "/api/feedback/open":
+                target = body.get("target") or "github"
+                report = body.get("report") or feedback.build_report()
+                title = body.get("title") or feedback.subject()
+                if target == "mail":
+                    email = (config.load().get("feedback_email") or "").strip()
+                    url = feedback.mail_link(email, report, title)
+                    if not url:
+                        self._json({"ok": False,
+                                    "message": "Почта для обратной связи не задана в настройках."})
+                        return
+                else:
+                    url = feedback.issue_link(report, title)
+                open_in_browser(url)
+                self._json({"ok": True, "opened": url})
                 return
             if path == "/api/open":
                 mod = db.get_mod(body.get("id", ""))
