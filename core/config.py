@@ -63,7 +63,8 @@ DEFAULTS = {
     "language": "ru",
     # GitHub-репозиторий для обновлений: "владелец/репозиторий"
     "update_repo": "Owiom/beamhub",
-    "feedback_email": "",
+    # почта автора: кнопка «Написать без аккаунта» в обратной связи
+    "feedback_email": "sparco56@gmail.com",
     "auto_check_updates": True,
 }
 
@@ -155,6 +156,11 @@ def detect_mods_dir() -> str:
 def _migrate(data: dict) -> dict:
     merged = dict(DEFAULTS)
     merged.update({k: v for k, v in data.items() if k in DEFAULTS or k.startswith("providers")})
+    # пустое значение в старом settings.json не должно затирать новый дефолт
+    # (например, почту обратной связи, появившуюся в свежей версии)
+    for key, default in DEFAULTS.items():
+        if default and not merged.get(key):
+            merged[key] = default
     return merged
 
 
