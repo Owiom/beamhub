@@ -8,6 +8,29 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Owiom/beamhub/tree/main/worker)
 
+Кнопка открывает мастер Cloudflare: он попросит войти в аккаунт, дать доступ к GitHub
+и создаст воркер `beamhub-feedback`. Если после нажатия «что-то прошло», но адреса нет —
+проверь [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages**:
+воркер либо уже в списке (открой его и скопируй URL), либо мастер не дошёл до конца.
+
+### Если кнопка не сработала — скрипт
+
+```powershell
+powershell -ExecutionPolicy Bypass -File worker\deploy.ps1
+```
+
+Скрипт спрашивает API-токен Cloudflare (ввод скрыт, никуда не сохраняется), сам
+загружает код, ставит секреты и печатает адрес воркера. Нужен токен с правами
+**Account → Workers Scripts: Edit** и **Account → Account Settings: Read**
+([создать](https://dash.cloudflare.com/profile/api-tokens)).
+
+### Или руками, без кнопки
+
+1. dash.cloudflare.com → **Workers & Pages** → **Create** → **Worker** → имя `beamhub-feedback` → **Deploy**.
+2. **Edit code** → удали шаблон → вставь весь [`index.js`](index.js) → **Deploy**.
+3. **Settings → Variables and Secrets** → добавь секреты канала (таблица ниже).
+4. Вверху страницы воркера будет URL `https://beamhub-feedback.<аккаунт>.workers.dev`.
+
 Дальше — **Settings → Variables and Secrets**, добавь секреты для одного или нескольких каналов.
 
 ### Куда доставлять
