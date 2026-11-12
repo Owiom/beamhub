@@ -1,0 +1,11 @@
+name = "beamhub-feedback"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+# Секреты не хранятся в файле — задай их в Dashboard → Settings → Variables and Secrets,
+# либо через `npx wrangler secret put BOT_TOKEN`.
+#
+# Каналы (достаточно одного):
+#   RESEND_KEY, FROM_EMAIL, TO_EMAIL   — письмо через resend.com
+#   BOT_TOKEN, CHAT_ID                 — Telegram
+#   GITHUB_TOKEN, GITHUB_REPO, GITHUB_LABELS — issue в репозитории

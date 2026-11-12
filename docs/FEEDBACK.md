@@ -6,37 +6,29 @@
 
 ## Вариант 1. Cloudflare Worker (бесплатно, 5 минут)
 
-1. Создай бота: в Telegram напиши **@BotFather** → `/newbot` → имя и юзернейм →
-   он выдаст токен вида `1234567890:AA...`.
-2. Напиши своему боту любое сообщение, затем открой
-   `https://api.telegram.org/bot<ТОКЕН>/getUpdates` и найди `"chat":{"id":123456789}` —
-   это `CHAT_ID`.
-3. Зайди на [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** →
-   **Create** → **Worker** → имя `beamhub-feedback` → **Deploy**.
-4. **Edit code** → вставь содержимое [`feedback-worker.js`](feedback-worker.js) → **Deploy**.
-5. **Settings → Variables and Secrets** добавь:
+Готовый воркер лежит в [`worker/`](../worker/README.md) — там кнопка деплоя и
+таблица каналов доставки.
 
-   | Имя | Значение |
-   |---|---|
-   | `BOT_TOKEN` | токен из шага 1 (тип: Secret) |
-   | `CHAT_ID` | id из шага 2 |
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Owiom/beamhub/tree/main/worker)
 
-6. Скопируй адрес воркера вида
-   `https://beamhub-feedback.твой-аккаунт.workers.dev`.
-7. В BeamHub: **Настройки → «Приёмник обратной связи»** → вставь этот адрес →
-   **Сохранить**.
+1. Нажми кнопку, разреши доступ к своему аккаунту Cloudflare.
+2. **Settings → Variables and Secrets** — добавь секреты одного канала:
+   - почта: `RESEND_KEY`, `FROM_EMAIL`, `TO_EMAIL` (ключ бесплатно на [resend.com](https://resend.com), 100 писем в сутки);
+   - или GitHub: `GITHUB_TOKEN`, `GITHUB_REPO=Owiom/beamhub`, `GITHUB_LABELS=feedback`
+     (fine-grained токен только с `Issues: Read and write`);
+   - или Telegram: `BOT_TOKEN`, `CHAT_ID` — **но в РФ `api.telegram.org` заблокирован**,
+     проверяется только через VPN, поэтому канал годен лишь если читаешь телегу мимо провайдера.
+3. Скопируй адрес `https://beamhub-feedback.<аккаунт>.workers.dev`.
+4. В BeamHub: **Настройки → «Приёмник обратной связи»** → вставь адрес → Сохранить.
 
-Теперь в окне обратной связи кнопка «Отправить» активна: отчёт уходит в Telegram,
-а игроку не нужно ничего открывать.
+Почему нужен воркер: он один знает токен. Если положить токен в exe, его вытащат
+за минуту и начнут спамить в твой чат или почту.
 
-Хочешь ещё и на почту — добавь в воркер секреты `RESEND_KEY`, `FROM_EMAIL`,
-`TO_EMAIL` (ключ бесплатный на [resend.com](https://resend.com), 100 писем в сутки).
+## Вариант 2. Сервисы форм
 
-## Вариант 2. Formspree / FormSubmit (без своего кода)
-
-Любой сервис, который принимает `POST` с JSON и присылает письмо, подойдёт как есть:
-вставь его endpoint в настройку «Приёмник обратной связи». Минус — адрес публичный,
-и форма-сервис может ловить спам по своим правилам.
+Formspree/Getform принимают `POST` с JSON, если у тебя есть их form-id — вставь адрес
+в настройку «Приёмник обратной связи». FormSubmit (без регистрации) **не подходит**:
+он отклоняет запросы не из браузера, проверено.
 
 ## Что уходит в отчёте
 
