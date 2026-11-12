@@ -1,0 +1,46 @@
+name: Баг-репорт
+description: Что-то не работает — расскажи, починим
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за отчёт. Чем точнее детали, тем быстрее починим.
+        Лог лежит в `%LOCALAPPDATA%\BeamHub\beamhub.log`.
+  - type: input
+    id: version
+    attributes:
+      label: Версия BeamHub
+      description: Видна в «Настройках» или в имени файла релиза
+      placeholder: "0.7.3"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Версия Windows
+      placeholder: "Windows 11 23H2"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Что произошло
+      description: Что делал, что ожидал увидеть, что получилось
+      placeholder: |
+        Нажал «Установить» на карточке мода, браузер открылся, файл скачался,
+        но в библиотеке мод не появился.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Хвост лога
+      description: Последние 20–30 строк из `%LOCALAPPDATA%\BeamHub\beamhub.log`
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Скриншоты и прочее
+      description: Можно перетащить картинки прямо сюда

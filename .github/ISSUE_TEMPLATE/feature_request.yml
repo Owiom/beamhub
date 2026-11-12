@@ -1,0 +1,34 @@
+name: Идея или новый источник
+description: Чего не хватает или какой сайт добавить в каталог
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Идеи приветствуются. Если предлагаешь новый сайт — дай ссылку на раздел
+        с модами и скажи, как там отдаётся файл (прямая ссылка, файлообменник, нужен логин).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Что предлагаешь
+      options:
+        - Новый источник каталога
+        - Улучшение интерфейса
+        - Новая функция
+        - Другое
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Описание
+      placeholder: |
+        Хочу, чтобы можно было собрать набор модов под сервер и включать его одним кликом.
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Ссылка (для нового источника)
+      placeholder: "https://example.com/beamng/mods/"
