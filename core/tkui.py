@@ -1339,22 +1339,98 @@ class App:
             self.status.configure(
                 text="BeamNG.drive запущена — моды подхватятся после перезапуска игры",
                 fg="#ffd6a3")
-        cats = state.get("categories", [])
+        cats = [(c["key"], c["label"], c["count"]) for c in state.get("categories", [])
+                if c.get("count")]
+        total = state.get("counts", {}).get("mods", 0)
+        signature = (self.category, total, tuple(cats))
+        if getattr(self, "_cat_signature", None) != signature:
+            self._cat_signature = signature
+            self._build_categories(total, cats)
+        else:
+            for key in self.cat_parts:
+                self._paint_cat(key)
+
+    CAT_ICONS = {"all": "all", "cars": "car", "maps": "map", "tools": "tool",
+                 "planes": "plane", "bikes": "bike", "boats": "boat", "other": "box"}
+
+    def _draw_cat_icon(self, canvas: tk.Canvas, kind: str, color: str) -> None:
+        canvas.delete("all")
+        if kind == "all":
+            for x, y in ((3, 10), (9, 10), (3, 16), (9, 16)):
+                canvas.create_rectangle(x, y, x + 4, y + 4, fill=color, width=0)
+        elif kind == "car":
+            canvas.create_polygon(3, 18, 5, 12, 14, 12, 17, 16, 17, 18,
+                                  fill=color, width=0, smooth=False)
+            canvas.create_oval(5, 16, 10, 21, fill=color, width=0)
+            canvas.create_oval(12, 16, 17, 21, fill=color, width=0)
+        elif kind == "map":
+            canvas.create_polygon(3, 11, 7, 13, 11, 11, 15, 13, 15, 19, 11, 17,
+                                  7, 19, 3, 17, fill="", outline=color, width=1)
+            canvas.create_line(7, 13, 7, 19, fill=color, width=1)
+            canvas.create_line(11, 11, 11, 17, fill=color, width=1)
+        elif kind == "tool":
+            canvas.create_line(4, 20, 13, 11, fill=color, width=3)
+            canvas.create_oval(12, 8, 17, 13, outline=color, width=2)
+        elif kind == "plane":
+            canvas.create_polygon(3, 16, 16, 9, 13, 15, 17, 18, 13, 20, fill=color, width=0)
+        elif kind == "bike":
+            canvas.create_oval(4, 15, 9, 20, outline=color, width=1)
+            canvas.create_oval(12, 15, 17, 20, outline=color, width=1)
+            canvas.create_line(6, 17, 10, 13, 14, 17, fill=color, width=1)
+            canvas.create_line(10, 13, 10, 18, fill=color, width=1)
+        elif kind == "boat":
+            canvas.create_polygon(3, 16, 17, 16, 14, 20, 6, 20, fill=color, width=0)
+            canvas.create_line(10, 9, 10, 16, fill=color, width=1)
+            canvas.create_polygon(10, 9, 10, 15, 15, 15, fill=color, width=0)
+        elif kind == "box":
+            canvas.create_rectangle(4, 11, 16, 20, outline=color, width=1)
+            canvas.create_line(4, 13, 16, 13, fill=color, width=1)
+
+    def _build_categories(self, total: int, cats: list[tuple[str, str, int]]) -> None:
         for child in self.cat_frame.winfo_children():
             child.destroy()
-        all_row = tk.Button(self.cat_frame, text=f"Все моды   {state.get('counts', {}).get('mods', 0)}",
-                            bg=SOFT, fg=TEXT if self.category == "all" else MUTED, relief="flat",
-                            anchor="w", font=(FONT, 10), padx=10, pady=5, cursor="hand2",
-                            command=lambda: self.pick_category("all"))
-        all_row.pack(fill="x", pady=1)
-        for cat in cats:
-            if not cat.get("count"):
-                continue
-            row = tk.Button(self.cat_frame, text=f"{cat['label']}   {cat['count']}",
-                            bg=SOFT, fg=TEXT if self.category == cat["key"] else MUTED,
-                            relief="flat", anchor="w", font=(FONT, 10), padx=10, pady=5,
-                            cursor="hand2", command=lambda k=cat["key"]: self.pick_category(k))
-            row.pack(fill="x", pady=1)
+        self.cat_parts: dict[str, dict] = {}
+        rows = [("all", "Все моды", total)] + list(cats)
+        for key, label, count in rows:
+            icon = self.CAT_ICONS.get(key, "box")
+            row = tk.Frame(self.cat_frame, bg=SOFT, cursor="hand2", height=30)
+            row.pack(fill="x", pady=1, padx=2)
+            row.pack_propagate(False)
+            bar = tk.Canvas(row, width=3, bg=SOFT, highlightthickness=0, bd=0)
+            bar.pack(side="left", fill="y")
+            icon_canvas = tk.Canvas(row, width=20, height=30, bg=SOFT, highlightthickness=0, bd=0)
+            icon_canvas.pack(side="left", padx=(8, 6))
+            text = tk.Label(row, text=label, bg=SOFT, fg=MUTED, font=(FONT, 9), anchor="w")
+            text.pack(side="left", fill="x", expand=True)
+            badge = tk.Label(row, text=str(count), bg=SOFT, fg=DIM, font=(FONT, 8), padx=4)
+            badge.pack(side="right", padx=(2, 6))
+            self._draw_cat_icon(icon_canvas, icon, MUTED)
+            self.cat_parts[key] = {"row": row, "bar": bar, "icon": icon_canvas, "kind": icon,
+                                   "label": text, "badge": badge}
+            for widget in (row, bar, icon_canvas, text, badge):
+                widget.bind("<Button-1>", lambda _e, k=key: self.pick_category(k))
+                widget.bind("<Enter>", lambda _e, k=key: self._paint_cat(k, hover=True))
+                widget.bind("<Leave>", lambda _e, k=key: self._paint_cat(k))
+            self._paint_cat(key)
+
+    def _paint_cat(self, key: str, hover: bool = False) -> None:
+        parts = self.cat_parts.get(key)
+        if not parts:
+            return
+        active = key == self.category
+        bg = ACTIVE_BG if active else (HOVER_BG if hover else SOFT)
+        for name in ("row", "bar", "icon", "label"):
+            parts[name].configure(bg=bg)
+        parts["badge"].configure(bg=bg,
+                                 fg=(ACCENT if active else DIM),
+                                 font=(FONT_BOLD, 8) if active else (FONT, 8))
+        parts["label"].configure(fg=(TEXT if active else (TEXT if hover else MUTED)),
+                                 font=(FONT_BOLD if active else FONT, 9))
+        self._draw_cat_icon(parts["icon"], parts["kind"],
+                            ACCENT if active else (TEXT if hover else MUTED))
+        parts["bar"].delete("all")
+        if active:
+            parts["bar"].create_rectangle(0, 6, 3, 24, fill=ACCENT, width=0)
 
     def pick_category(self, key: str) -> None:
         self.category = key
