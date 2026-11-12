@@ -26,7 +26,10 @@ jobs:
           pip install -r requirements.txt
 
       - name: Собрать
-        run: python build_exe.py --onedir
+        shell: pwsh
+        run: |
+          python build_exe.py --onedir 2>&1 | Tee-Object -FilePath build.log
+          if (Test-Path build.log) { Get-Content build.log -Tail 40 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append }
 
       - name: Упаковать
         shell: pwsh
@@ -35,7 +38,8 @@ jobs:
           $name = "BeamHub-$tag-win64-portable.zip"
           New-Item -ItemType Directory -Path pack | Out-Null
           Copy-Item dist\BeamHub -Destination pack\BeamHub -Recurse
-          Copy-Item dist\ЧИТАЙ-МЕНЯ.txt, README.md -Destination pack
+          Copy-Item ЧИТАЙ-МЕНЯ.txt, README.md, SECURITY.md, LICENSE -Destination pack
+          if (Test-Path docs) { Copy-Item docs -Destination pack\docs -Recurse }
           Compress-Archive -Path "pack\*" -DestinationPath $name
           "ARCHIVE=$name" | Out-File -FilePath $env:GITHUB_ENV -Append
 
