@@ -124,6 +124,24 @@ def main() -> int:
         fake = {"key": "outside.zip", "path": str(outside), "filename": "outside.zip"}
         check("удаление вне папки модов запрещено", installer.remove(fake, cfg)["status"] == "error")
         check("файл не тронут", outside.exists())
+
+        print("[5] обновление мода")
+        upd_v1 = root / "upd_v1.zip"
+        make_zip(upd_v1, {"vehicles/upd/info.json": '{"version":"1.0"}', "vehicles/upd/a.jbeam": "1"})
+        first = installer.install_archive(upd_v1, {"id": "test:upd", "title": "Upd Mod",
+                                                  "version": "1.0"}, cfg)
+        check("первая версия установлена", first["status"] == "installed", str(first))
+        upd_v2 = root / "upd_v2.zip"
+        make_zip(upd_v2, {"vehicles/upd/info.json": '{"version":"1.1"}', "vehicles/upd/a.jbeam": "2"})
+        second = installer.install_archive(upd_v2, {"id": "test:upd", "title": "Upd Mod",
+                                                    "version": "1.1"}, cfg)
+        check("обновление установлено", second["status"] == "installed", str(second))
+        upd_files = [p.name for p in mods_dir.glob("Upd Mod*.zip")]
+        check("остался один файл мода", len(upd_files) == 1, str(upd_files))
+        check("имя без _2", upd_files and "_2" not in upd_files[0], str(upd_files))
+        rows = db.installed_for_mod("test:upd")
+        check("в библиотеке одна запись", len(rows) == 1, str(len(rows)))
+        check("версия обновилась", rows and rows[0].get("version") == "1.1", str(rows))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -163,6 +163,14 @@ def _unique_name(mods_dir: Path, wanted: str) -> str:
     return candidate
 
 
+def _drop_previous(mod_id: str, keep_key: str, cfg: dict) -> None:
+    """После установки новой версии убираем старые файлы того же мода."""
+    for row in db.installed_for_mod(mod_id):
+        if row["key"] == keep_key:
+            continue
+        remove(row, cfg)
+
+
 def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None) -> dict:
     """Главная операция: положить архив в папку модов и записать в библиотеку."""
     cfg = cfg or config.load()
@@ -192,7 +200,10 @@ def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None
 
         mods_dir = config.ensure_mods_dir(cfg)
         display_name = (mod or {}).get("title") or path.stem
-        filename = _unique_name(mods_dir, safe_filename(display_name) + ".zip")
+        # обновление ставим на место старого файла, чтобы не плодить «_2»
+        previous = db.installed_for_mod(mod["id"]) if mod and mod.get("id") else []
+        reuse = previous[0]["filename"] if previous else ""
+        filename = reuse or _unique_name(mods_dir, safe_filename(display_name) + ".zip")
         target = mods_dir / filename
         partial = mods_dir / (filename + ".part")
 
@@ -216,6 +227,8 @@ def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None
             "version": (mod or {}).get("version", ""),
         }
         db.installed_add(entry)
+        if mod and mod.get("id"):
+            _drop_previous(mod["id"], entry["key"], cfg)
         return {"status": "installed", "installed": entry, "kind": info["kind"]}
     except RuntimeError as exc:
         return {"status": "error", "message": str(exc)}

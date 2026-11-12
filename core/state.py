@@ -176,6 +176,12 @@ class Hub:
             self.emit("installed", f"Установлено: {title}", mod_id=(mod or {}).get("id"),
                       filename=result["installed"]["filename"])
             self.clear_pending()
+            try:
+                from . import matcher
+
+                threading.Thread(target=matcher.match_all, daemon=True).start()
+            except Exception:  # noqa: BLE001
+                pass
             return True
         if result["status"] == "duplicate":
             self.emit("duplicate", f"«{path.stem}» уже установлен — пропустил.", mod_id=(mod or {}).get("id"))

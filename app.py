@@ -53,7 +53,7 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import config, db, enrich, installer, security, updater  # noqa: E402
+    from core import config, db, enrich, installer, matcher, security, updater  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -195,6 +195,7 @@ def state_payload() -> dict:
         "game_running": is_game_running(),
         "favorites": db.favorites_count(),
         "updates": db.updates_count(),
+        "matched": db.matched_count(),
         "duplicates": len(db.installed_doubles()),
         "sources": [
             {"key": key, "label": label, "count": sources.get(key, 0)}
@@ -423,13 +424,19 @@ class Handler(BaseHTTPRequestHandler):
                         "installed_text": human_ago(row.get("installed_at")),
                         "version": row.get("version") or "",
                         "catalog_version": catalog_version,
+                        "catalog_title": (mod or {}).get("title") or "",
                         "update_available": has_update,
+                        "matched": bool(row.get("mod_id")),
+                        "version_unknown": bool(row.get("mod_id") and not row.get("version")
+                                                and catalog_version),
                         "duplicate": bool(reason),
                         "duplicate_reason": reason,
                     })
                 self._json({"ok": True, "items": items, "mods_dir": config.load().get("mods_dir"),
                             "game_running": is_game_running(),
                             "updates": sum(1 for i in items if i["update_available"]),
+                            "unknown": sum(1 for i in items if i["version_unknown"]),
+                            "matched": sum(1 for i in items if i["matched"]),
                             "duplicates": sum(1 for i in items if i["duplicate"])})
                 return
             if path == "/api/inbox":
@@ -510,6 +517,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": result["status"] in ("installed", "duplicate"), **result})
                 if result["status"] == "installed":
                     HUB.emit("installed", f"Установлено: {result['installed']['title']}")
+                    threading.Thread(target=matcher.match_all, daemon=True).start()
                 return
             if path == "/api/favorite":
                 mod_id = (body.get("id") or "").strip()
@@ -518,6 +526,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 state = db.favorite_toggle(mod_id)
                 self._json({"ok": True, "favorite": state})
+                return
+            if path == "/api/library/match":
+                installer.scan_library()
+                stats = matcher.match_all()
+                self._json({"ok": True, **stats})
                 return
             if path == "/api/library/export":
                 import time as _time
@@ -758,6 +771,9 @@ def bootstrap() -> None:
     db.init()
     try:
         installer.scan_library()
+        stats = matcher.match_all()
+        if stats["matched"]:
+            print(f"[beamhub] к каталогу привязано модов: {stats['matched']} из {stats['checked']}")
     except Exception as exc:  # noqa: BLE001
         print(f"[beamhub] library scan: {exc}")
     HUB.start()

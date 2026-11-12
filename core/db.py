@@ -320,6 +320,24 @@ def updates_count() -> int:
     return row["c"]
 
 
+def matched_count() -> int:
+    with _lock:
+        return _db().execute(
+            "SELECT COUNT(*) c FROM installed WHERE mod_id IS NOT NULL AND mod_id <> ''"
+        ).fetchone()["c"]
+
+
+def unknown_version_rows() -> list[dict]:
+    """Привязаны к каталогу, но версия файла неизвестна (ставились до BeamHub)."""
+    with _lock:
+        rows = _db().execute(
+            "SELECT i.*, m.version AS catalog_version, m.title AS catalog_title "
+            "FROM installed i JOIN mods m ON m.id = i.mod_id "
+            "WHERE (i.version IS NULL OR i.version = '') AND m.version <> '' "
+            "ORDER BY i.installed_at DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
 def update_rows() -> list[dict]:
     with _lock:
         rows = _db().execute(

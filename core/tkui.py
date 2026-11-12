@@ -582,10 +582,23 @@ class App:
             return
         items = data.get("items", [])
         duplicates = data.get("duplicates", 0)
+        matched = data.get("matched", 0)
         header = f"{len(items)} файлов"
+        if matched:
+            header += f" · привязано к каталогу: {matched}"
         if duplicates:
             header += f" · дублей: {duplicates}"
         self.count_label.configure(text=header)
+
+        toolbar = tk.Frame(frame, bg=BG)
+        toolbar.pack(fill="x", pady=(0, 8))
+        tk.Label(toolbar, text="Моды, поставленные до BeamHub, привязываются к каталогу "
+                               "по названию и размеру — так для них работают обновления.",
+                 bg=BG, fg=DIM, font=("Segoe UI", 9), wraplength=760, justify="left",
+                 anchor="w").pack(side="left", fill="x", expand=True)
+        tk.Button(toolbar, text="Сопоставить с каталогом", bg=PANEL, fg=TEXT, relief="flat",
+                  font=("Segoe UI", 9), padx=12, pady=5, cursor="hand2",
+                  command=self.match_library).pack(side="right")
         if not items:
             tk.Label(frame, text="Пока пусто. Установите мод из каталога.", bg=BG, fg=MUTED,
                      font=("Segoe UI", 11)).pack(anchor="w", pady=20)
@@ -598,7 +611,8 @@ class App:
             row_bg = DUP_BG if row.get("duplicate") else PANEL
             info = tk.Frame(line, bg=row_bg)
             info.pack(side="left", fill="x", expand=True, padx=12, pady=8)
-            tk.Label(info, text=row.get("title") or row.get("filename"), bg=row_bg, fg=TEXT,
+            shown_title = row.get("catalog_title") or row.get("title") or row.get("filename")
+            tk.Label(info, text=shown_title, bg=row_bg, fg=TEXT,
                      font=("Segoe UI", 10, "bold"), anchor="w").pack(fill="x")
             tk.Label(info, text=f"{row.get('filename')} · {row.get('size_text')} · "
                                 f"{row.get('installed_text')}",
@@ -611,6 +625,9 @@ class App:
                 reason = row.get("duplicate_reason") or "файл"
                 tk.Label(line, text=f"ДУБЛИКАТ ({reason})", bg=DUP_BG, fg="#ff8f8f",
                          font=("Segoe UI", 8, "bold")).pack(side="left", padx=4)
+            if not row.get("matched"):
+                tk.Label(line, text="не привязан", bg=row_bg, fg=DIM,
+                         font=("Segoe UI", 8)).pack(side="left", padx=4)
             if row.get("update_available"):
                 tk.Label(line, text=f"обновление {row.get('catalog_version')}", bg=PANEL,
                          fg="#ffd6a3", font=("Segoe UI", 8)).pack(side="left", padx=4)
@@ -627,6 +644,20 @@ class App:
         except Exception as exc:  # noqa: BLE001
             self.set_status(f"Ошибка: {exc}")
         self.render_library()
+
+    def match_library(self) -> None:
+        self.set_status("Сопоставляю моды с каталогом…")
+
+        def work() -> None:
+            try:
+                stats = self.api.post("/api/library/match", {})
+                text = (f"Сопоставлено: {stats.get('matched')} из {stats.get('checked')}.\n"
+                        "Для привязанных модов теперь работают обновления.")
+                self.root.after(0, lambda: messagebox.showinfo("Сопоставление с каталогом", text))
+                self.root.after(0, self.render_library)
+            except Exception as exc:  # noqa: BLE001
+                self.root.after(0, lambda: self.set_status(f"Ошибка: {exc}"))
+        threading.Thread(target=work, daemon=True).start()
 
     def remove_mod(self, row: dict) -> None:
         if not messagebox.askyesno("BeamHub", f"Удалить {row['filename']} из папки модов?"):
@@ -905,8 +936,11 @@ class App:
         except Exception as exc:  # noqa: BLE001
             tk.Label(frame, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
             return
-        rows = [row for row in data.get("items", []) if row.get("update_available")]
-        self.count_label.configure(text=f"{len(rows)} обновлений")
+        rows = [row for row in data.get("items", [])
+                if row.get("update_available") or row.get("version_unknown")]
+        known = sum(1 for row in rows if row.get("update_available"))
+        self.count_label.configure(
+            text=f"{known} обновлений" + (f" · {len(rows) - known} без версии" if len(rows) > known else ""))
         if not rows:
             tk.Label(frame, text="Все установленные моды актуальны.", bg=BG, fg=MUTED,
                      font=("Segoe UI", 11)).pack(anchor="w", pady=20)
@@ -918,9 +952,14 @@ class App:
             info.pack(side="left", fill="x", expand=True, padx=12, pady=8)
             tk.Label(info, text=row.get("title") or row.get("filename"), bg=PANEL, fg=TEXT,
                      font=("Segoe UI", 10, "bold"), anchor="w").pack(fill="x")
-            tk.Label(info, text=f"установлено {row.get('version')} → в каталоге "
-                                f"{row.get('catalog_version')}",
-                     bg=PANEL, fg="#ffd6a3", font=("Segoe UI", 8), anchor="w").pack(fill="x")
+            if row.get("update_available"):
+                note = f"установлено {row.get('version')} → в каталоге {row.get('catalog_version')}"
+                color = "#ffd6a3"
+            else:
+                note = f"версия файла неизвестна, в каталоге {row.get('catalog_version')}"
+                color = MUTED
+            tk.Label(info, text=note, bg=PANEL, fg=color, font=("Segoe UI", 8),
+                     anchor="w").pack(fill="x")
             tk.Button(line, text="Скачать новую", bg=ACCENT, fg="#1a0f04", relief="flat",
                       font=("Segoe UI", 9, "bold"), padx=12, cursor="hand2",
                       command=lambda r=row: self.install({"id": r["mod_id"],
