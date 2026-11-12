@@ -28,8 +28,24 @@ jobs:
       - name: Собрать
         shell: pwsh
         run: |
+          python -V
+          python -m PyInstaller --version
           python build_exe.py --onedir 2>&1 | Tee-Object -FilePath build.log
           if (Test-Path build.log) { Get-Content build.log -Tail 40 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append }
+
+      - name: Лог сборки на случай падения
+        if: failure()
+        shell: pwsh
+        run: |
+          if (Test-Path build.log) {
+            git config user.name "ci"
+            git config user.email "ci@beamhub.local"
+            git checkout -b ci-log
+            Copy-Item build.log log-fail.txt
+            git add -f log-fail.txt
+            git commit -m "build log"
+            git push -f origin ci-log
+          }
 
       - name: Упаковать
         shell: pwsh
