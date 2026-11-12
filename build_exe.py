@@ -27,13 +27,31 @@ SOURCE_DB = ROOT / "data" / "beamhub.db"
 ICON = ROOT / "beamhub.ico"
 
 
+def _clean_seed(path: Path) -> None:
+    """Из комплекта убираем личные данные: библиотеку, избранное, метки синхронизации."""
+    import sqlite3
+
+    try:
+        con = sqlite3.connect(path)
+        for table in ("installed", "favorites", "meta"):
+            try:
+                con.execute(f"DELETE FROM {table}")
+            except sqlite3.Error:
+                pass
+        con.commit()
+        con.close()
+    except sqlite3.Error as exc:
+        print(f"не удалось почистить комплект: {exc}")
+
+
 def prepare_seed() -> None:
     """Кладём в сборку готовый каталог, чтобы у пользователя всё было сразу."""
     SEED_DIR.mkdir(exist_ok=True)
     if SOURCE_DB.exists():
         shutil.copyfile(SOURCE_DB, SEED_DB)
+        _clean_seed(SEED_DB)
         print(f"каталог для комплекта: {SOURCE_DB} -> {SEED_DB} "
-              f"({SEED_DB.stat().st_size / 1024 ** 2:.1f} МБ)")
+              f"({SEED_DB.stat().st_size / 1024 ** 2:.1f} МБ, без личных данных)")
     elif SEED_DB.exists():
         print("использую существующий seed/beamhub.db")
     else:
