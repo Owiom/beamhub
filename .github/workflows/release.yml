@@ -1,0 +1,47 @@
+name: Release
+
+# Собирает BeamHub.exe и прикрепляет портативный архив к релизу.
+# Запуск: git tag v0.6.0 && git push --tags
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установить зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Собрать
+        run: python build_exe.py --onedir
+
+      - name: Упаковать
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $name = "BeamHub-$tag-win64-portable.zip"
+          New-Item -ItemType Directory -Path pack | Out-Null
+          Copy-Item dist\BeamHub -Destination pack\BeamHub -Recurse
+          Copy-Item dist\ЧИТАЙ-МЕНЯ.txt, README.md -Destination pack
+          Compress-Archive -Path "pack\*" -DestinationPath $name
+          "ARCHIVE=$name" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Прикрепить к релизу
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

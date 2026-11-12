@@ -1,0 +1,21 @@
+# данные и сборка — не в репозиторий
+__pycache__/
+*.py[cod]
+data/
+seed/
+dist/
+build/
+*.spec
+*.log
+.tmp/
+.run/
+.pack/
+.final/
+.probe/
+beamhub-icon.png
+BeamHub-*.zip
+
+# окружение
+.venv/
+venv/
+*.egg-info/

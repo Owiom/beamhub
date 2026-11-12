@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="beamhub-token" content="__BEAMHUB_TOKEN__">
+<title>BeamHub — каталог модов BeamNG.drive</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff7a1a'/%3E%3Ctext x='32' y='45' font-family='Segoe UI,Arial' font-size='38' font-weight='bold' text-anchor='middle' fill='%2314100c'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">B</div>
+      <div>
+        <div class="brand-title">BeamHub</div>
+        <div class="brand-sub">каталог модов BeamNG.drive</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="catalog">
+        <span class="nav-icon">▦</span> Каталог <span class="nav-count" id="count-mods">0</span>
+      </button>
+      <button class="nav-item" data-view="library">
+        <span class="nav-icon">✔</span> Библиотека <span class="nav-count" id="count-lib">0</span>
+      </button>
+      <button class="nav-item" data-view="inbox">
+        <span class="nav-icon">↓</span> Загрузки <span class="nav-count" id="count-inbox">0</span>
+      </button>
+      <button class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙</span> Настройки
+      </button>
+    </nav>
+
+    <div class="section-label">Категории</div>
+    <div class="cats" id="cats"></div>
+
+    <div class="sidebar-foot" id="foot"></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="search">
+        <span class="search-icon">⌕</span>
+        <input id="search" type="search" placeholder="Поиск: bmw, карта, vaz, дрифт…" autocomplete="off">
+      </div>
+      <select id="source" title="Источник">
+        <option value="all">Все источники</option>
+        <option value="modsgaming">modsgaming.ru</option>
+        <option value="playground">playground.ru</option>
+      </select>
+      <select id="sort" title="Сортировка">
+        <option value="new">Сначала новые</option>
+        <option value="old">Сначала старые</option>
+        <option value="title">По названию А→Я</option>
+        <option value="title_desc">По названию Я→А</option>
+        <option value="size">По размеру</option>
+        <option value="downloads">По популярности</option>
+      </select>
+      <button class="btn ghost" id="add-link" title="Добавить мод по ссылке">＋ Ссылка</button>
+      <button class="btn" id="sync" title="Перечитать каталог сайта">↻ Каталог</button>
+    </header>
+
+    <div class="progress-bar" id="progress"><div class="progress-fill" id="progress-fill"></div><span id="progress-text"></span></div>
+
+    <section class="view" id="view-catalog">
+      <div class="view-head">
+        <h1 id="catalog-title">Каталог модов</h1>
+        <div class="view-meta"><span id="catalog-count"></span></div>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="empty" id="grid-empty" hidden>
+        <div class="empty-title">Ничего не нашлось</div>
+        <div class="empty-text">Попробуйте другой запрос или обновите каталог.</div>
+      </div>
+      <div class="more-wrap"><button class="btn ghost" id="more" hidden>Показать ещё</button></div>
+    </section>
+
+    <section class="view" id="view-library" hidden>
+      <div class="view-head">
+        <h1>Библиотека</h1>
+        <div class="view-meta"><span id="library-meta"></span></div>
+      </div>
+      <div class="hint">Моды отсюда уже лежат в папке игры. «Выключить» убирает мод из папки <code>mods</code>, не удаляя файл.</div>
+      <div class="list" id="library-list"></div>
+    </section>
+
+    <section class="view" id="view-inbox" hidden>
+      <div class="view-head">
+        <h1>Загрузки</h1>
+        <div class="view-meta"><span id="inbox-meta"></span></div>
+      </div>
+      <div class="hint">Архивы, которые лежат в папке загрузок и ещё не установлены. Скачали мод вручную — он появится здесь и поставится одним нажатием.</div>
+      <div class="list" id="inbox-list"></div>
+    </section>
+
+    <section class="view" id="view-settings" hidden>
+      <div class="view-head"><h1>Настройки</h1></div>
+      <div class="form">
+        <label class="field">
+          <span>Папка модов игры</span>
+          <div class="row">
+            <input id="set-mods" type="text" spellcheck="false">
+            <button class="btn ghost" id="detect-mods">Найти</button>
+          </div>
+          <small>Обычно <code>%LOCALAPPDATA%\BeamNG\BeamNG.drive\current\mods</code></small>
+        </label>
+        <label class="field">
+          <span>Папка загрузок (её BeamHub слушает)</span>
+          <div class="row">
+            <input id="set-downloads" type="text" spellcheck="false">
+            <button class="btn ghost" id="detect-downloads">По умолчанию</button>
+          </div>
+        </label>
+        <label class="field checkbox">
+          <input id="set-auto" type="checkbox">
+          <span>Ставить новые архивы из «Загрузок» автоматически</span>
+        </label>
+        <div class="field">
+          <span>Служебное</span>
+          <div class="row">
+            <button class="btn ghost" id="rescan">Пересобрать библиотеку</button>
+            <button class="btn" id="save-settings">Сохранить</button>
+          </div>
+        </div>
+        <div class="field">
+          <span>Завершение работы</span>
+          <div class="row">
+            <button class="btn danger" id="quit-app">Остановить BeamHub</button>
+          </div>
+          <small>В версии для Windows (.exe) окна консоли нет — приложение останавливается этой кнопкой.</small>
+        </div>
+      </div>
+      <div class="about" id="about"></div>
+    </section>
+  </main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <button class="modal-close" id="modal-close">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
