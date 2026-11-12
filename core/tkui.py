@@ -422,7 +422,7 @@ class App:
 
         actions = tk.Frame(card, bg=PANEL)
         actions.pack(fill="x", padx=10, pady=(8, 10))
-        text = "Установлен" if item.get("installed") else "Установить"
+        text = "Установлен" if item.get("installed") else "Скачать"
         button = tk.Button(actions, text=text, bg=ACCENT, fg="#1a0f04", relief="flat",
                            font=("Segoe UI", 9, "bold"), cursor="hand2",
                            activebackground="#ff9350", command=lambda i=item, b=None: self.install(i))
@@ -561,7 +561,7 @@ class App:
 
         buttons = tk.Frame(window, bg=BG)
         buttons.pack(fill="x", padx=18, pady=(0, 16))
-        tk.Button(buttons, text="Установить", bg=ACCENT, fg="#1a0f04", relief="flat",
+        tk.Button(buttons, text="Скачать", bg=ACCENT, fg="#1a0f04", relief="flat",
                   font=("Segoe UI", 10, "bold"), padx=18, pady=6, cursor="hand2",
                   command=lambda: self.install(item)).pack(side="left")
         tk.Button(buttons, text="Открыть страницу", bg=PANEL, fg=TEXT, relief="flat",

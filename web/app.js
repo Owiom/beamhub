@@ -90,7 +90,7 @@ function card(item) {
   body.appendChild(meta);
 
   const actions = el('div', 'card-actions');
-  const installBtn = el('button', 'btn small', item.installed ? 'Установить снова' : 'Установить');
+  const installBtn = el('button', 'btn small', item.installed ? 'Скачать снова' : 'Скачать');
   installBtn.dataset.role = 'install';
   installBtn.addEventListener('click', () => installMod(item, installBtn));
   const detailsBtn = el('button', 'icon-btn', 'i');
@@ -175,7 +175,7 @@ function markInstalled(id) {
       node.querySelector('.card-img')?.appendChild(badge);
     }
     const button = node.querySelector('[data-role="install"]');
-    if (button) { button.disabled = false; button.textContent = 'Установить снова'; }
+    if (button) { button.disabled = false; button.textContent = 'Скачать снова'; }
     const details = node.querySelector('.icon-btn');
     if (details) details.disabled = false;
   });
@@ -203,7 +203,7 @@ async function openDetails(id) {
         </div>
         <div class="modal-desc">${esc(item.description || 'Описание на странице мода.')}</div>
         <div class="modal-actions">
-          <button class="btn" id="m-install">Установить</button>
+          <button class="btn" id="m-install">Скачать</button>
           <button class="btn ghost" id="m-page">Открыть страницу</button>
         </div>
       </div>`;
@@ -283,7 +283,7 @@ async function loadInbox() {
         row.valid ? (row.kind === 'maps' ? 'карта' : row.kind === 'cars' ? 'машина' : 'мод') : 'не мод');
       node.appendChild(kindPill);
       const actions = el('div', 'row-actions');
-      const install = el('button', 'btn small', 'Установить');
+      const install = el('button', 'btn small', 'Скачать');
       install.disabled = !row.valid;
       install.addEventListener('click', async () => {
         install.disabled = true;

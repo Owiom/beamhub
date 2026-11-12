@@ -13,7 +13,7 @@
 **Description** (Settings → General → Description):
 
 ```
-Каталог модов для BeamNG.drive: 2791 мод с четырёх сайтов, установка в один клик, библиотека, обновления. Windows, .exe
+Каталог модов для BeamNG.drive: 2791 мод с четырёх сайтов, установка без ручного распаковывания, библиотека, обновления. Windows, .exe
 ```
 
 **Topics** (Settings → Topics, копируй списком):
@@ -75,7 +75,8 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 >
 > - ~2800 mods from modsgaming.ru, playground.ru, beamngland.com, beamngmods.net
 > - categories, search, filters by game version, favorites, duplicate detection
-> - one click → archive is validated, repacked if needed, placed into the mods folder
+> - install: you press Download, the browser fetches the file, the app validates the
+>   archive, repacks it if needed and places it into the mods folder
 > - library with enable/disable/delete and "update available" badges
 > - portable exe, MIT, source on GitHub: https://github.com/Owiom/beamhub
 >
@@ -94,7 +95,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 
 **Короткий текст:**
 
-> Сделал каталог-лаунчер модов для BeamNG: 2791 мод с четырёх сайтов, установка в один клик,
+> Сделал каталог-лаунчер модов для BeamNG: 2791 мод с четырёх сайтов, скачал — и мод уже стоит,
 > библиотека и поиск дубликатов. Portable exe, MIT, без регистрации.
 > https://github.com/Owiom/beamhub — буду рад баг-репортам.
 
@@ -112,7 +113,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 > Что умеет:
 > • 2791 мод с modsgaming, playground, beamngland и beamngmods в одном окне
 > • категории, поиск, фильтры по версии игры, избранное
-> • установка в один клик: архив проверяется, лишняя папка-обёртка срезается,
+> • скачал → поставилось само: архив проверяется, лишняя папка-обёртка срезается,
 >   дубликаты по хешу не ставятся
 > • библиотека: включить/выключить/удалить, метки «обновление» и «дубликат»
 > • обновляется сам через GitHub Releases

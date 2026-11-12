@@ -2,7 +2,7 @@
 
 # BeamHub — mod catalog & launcher for BeamNG.drive
 
-**One catalog instead of ten file‑hosting tabs.** Find a mod, press *Install* — BeamHub downloads the archive, validates it and drops it into the game's `mods` folder.
+**One catalog instead of ten file‑hosting tabs.** Find a mod, press *Download*: the page opens, your browser fetches the archive (the sites won't hand files to a script), and BeamHub picks it up from the Downloads folder, validates it and copies it into the game's `mods`. From there: library, enable/disable, update checks.
 
 [![Release](https://img.shields.io/github/v/release/Owiom/beamhub?style=flat-square)](https://github.com/Owiom/beamhub/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Owiom/beamhub/total?style=flat-square)](https://github.com/Owiom/beamhub/releases)
@@ -16,7 +16,7 @@
 - **2791 mods from 4 sites** — modsgaming.ru, playground.ru, beamngland.com, beamngmods.net — in a single window.
 - **Categories & sorting** — cars, maps, tools, planes, bikes; newest, by name, by size, by popularity.
 - **Search** with filters: game version `0.40.x`, “with cover”, “favorites”.
-- **One‑click install** — archive is validated, repacked if it has a wrapper folder, deduplicated by SHA‑256 and copied into the game.
+- **Download once, installed automatically** — you press *Download*, the browser fetches the file, and BeamHub validates the archive, strips a wrapper folder, dedupes by SHA‑256 and copies it into the game.
 - **Duplicate detection** — the same mod from different sites is marked in the catalog and highlighted in the library.
 - **Library** — enable / disable / delete, “update available” badges.
 - **Favorites** and a dedicated **Updates** tab.

@@ -641,7 +641,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         open_in_browser(url)
         self._json({"ok": True, "mode": "browser", "opened": url,
-                    "message": "Открыл браузер. Как только архив докачается, BeamHub поставит его сам."})
+                    "message": "Открыл страницу мода в браузере. Нажми там «Скачать» — "
+                               "как только архив докачается, BeamHub поставит его сам."})
 
 
 # ---------------------------------------------------------------- startup
