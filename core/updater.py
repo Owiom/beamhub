@@ -297,22 +297,3 @@ def apply_update(asset_url: str, version: str = "", digest: str = "") -> dict:
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "message": f"Не удалось установить обновление: {exc}"}
 
-
-def feedback_url() -> str:
-    """mailto-ссылка с версией и путями — чтобы письмо было информативным."""
-    from urllib.parse import quote
-
-    cfg = config.load()
-    email = (cfg.get("feedback_email") or "").strip()
-    if not email:
-        return ""
-    subject = f"BeamHub {VERSION}"
-    body = (
-        "\n\n---\n"
-        f"Версия: {VERSION}\n"
-        f"ОС: {sys.platform} {os.environ.get('OS', '')}\n"
-        f"Игра: {cfg.get('game_path') or 'не найдена'}\n"
-        f"Папка модов: {cfg.get('mods_dir') or 'не найдена'}\n"
-        f"Данные: {config.DATA_DIR}\n"
-    )
-    return f"mailto:{email}?subject={quote(subject)}&body={quote(body)}"

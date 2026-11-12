@@ -63,10 +63,6 @@ DEFAULTS = {
     "language": "ru",
     # GitHub-репозиторий для обновлений: "владелец/репозиторий"
     "update_repo": "Owiom/beamhub",
-    # почта автора: кнопка «Написать без аккаунта» в обратной связи
-    "feedback_email": "sparco56@gmail.com",
-    # https-приёмник для отправки отчёта прямо из приложения (Cloudflare Worker и т.п.)
-    "feedback_endpoint": "",
     "auto_check_updates": True,
 }
 

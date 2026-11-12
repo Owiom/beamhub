@@ -32,9 +32,6 @@ jobs:
       - name: Тесты установщика
         run: python tests\test_install.py
 
-      - name: Тест обратной связи
-        run: python tests\test_feedback.py
-
       - name: Тексты и подписи не врут
         run: python tools\lint_claims.py
 
