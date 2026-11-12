@@ -60,7 +60,7 @@ DEFAULTS = {
     "enrich_workers": 4,
     "language": "ru",
     # GitHub-репозиторий для обновлений: "владелец/репозиторий"
-    "update_repo": "Owiom/BeamHub-BeamHG",
+    "update_repo": "Owiom/beamhub",
     "feedback_email": "",
     "auto_check_updates": True,
 }

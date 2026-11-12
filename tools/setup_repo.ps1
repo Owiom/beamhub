@@ -13,10 +13,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repo = "Owiom/BeamHub-BeamHG"
+$repo = "Owiom/beamhub"
 $newName = "beamhub"
 $description = "Каталог модов для BeamNG.drive: 2791 мод с четырёх сайтов, установка в один клик, библиотека, обновления. Windows, .exe"
-$homepage = "https://github.com/Owiom/BeamHub-BeamHG/releases/latest"
+$homepage = "https://github.com/Owiom/beamhub/releases/latest"
 $topics = @(
     "beamng", "beamngdrive", "beamng-drive", "mods", "mod-manager", "launcher",
     "mod-catalog", "gaming-tools", "python", "tkinter", "windows", "pyinstaller",

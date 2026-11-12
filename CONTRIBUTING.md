@@ -5,8 +5,8 @@
 ## Запуск из исходников
 
 ```bat
-git clone https://github.com/Owiom/BeamHub-BeamHG.git
-cd BeamHub-BeamHG
+git clone https://github.com/Owiom/beamhub.git
+cd beamhub
 py -m pip install -r requirements.txt
 py app.py                      :: окно приложения
 py app.py --browser            :: веб-интерфейс в браузере

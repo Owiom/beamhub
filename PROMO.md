@@ -28,7 +28,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 **Прочее:**
 - закрепи последний релиз (Releases → ⋯ → Edit → галочка «Set as latest»);
 - в About справа добавь ссылку на релиз и на `docs/catalog.png`;
-- имя репозитория `BeamHub-BeamHG` похоже на опечатку — переименуй в `beamhub`
+- имя репозитория `beamhub` похоже на опечатку — переименуй в `beamhub`
   (Settings → Rename, GitHub сохранит редирект со старого адреса).
 
 ---
@@ -55,7 +55,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 > It's a portable .exe, no install, no account, nothing phoned home — the local server
 > binds to 127.0.0.1 and the API is hardened against CSRF/DNS‑rebinding.
 >
-> Repo (MIT) and release: https://github.com/Owiom/BeamHub-BeamHG
+> Repo (MIT) and release: https://github.com/Owiom/beamhub
 > Would love feedback on what's missing — collections? screenshot gallery? silent updates?
 
 **Флейр:** `Mod` или `Tool` — если сабреддит требует флейр для не-модов, попробуй `Discussion`.
@@ -77,7 +77,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 > - categories, search, filters by game version, favorites, duplicate detection
 > - one click → archive is validated, repacked if needed, placed into the mods folder
 > - library with enable/disable/delete and "update available" badges
-> - portable exe, MIT, source on GitHub: https://github.com/Owiom/BeamHub-BeamHG
+> - portable exe, MIT, source on GitHub: https://github.com/Owiom/beamhub
 >
 > Downloads still go through the browser, because the sites use Cloudflare and file
 > hosts — the app picks the file up from the Downloads folder.
@@ -96,7 +96,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 
 > Сделал каталог-лаунчер модов для BeamNG: 2791 мод с четырёх сайтов, установка в один клик,
 > библиотека и поиск дубликатов. Portable exe, MIT, без регистрации.
-> https://github.com/Owiom/BeamHub-BeamHG — буду рад баг-репортам.
+> https://github.com/Owiom/beamhub — буду рад баг-репортам.
 
 ---
 
@@ -117,7 +117,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 > • библиотека: включить/выключить/удалить, метки «обновление» и «дубликат»
 > • обновляется сам через GitHub Releases
 >
-> Portable exe, ничего ставить не нужно: https://github.com/Owiom/BeamHub-BeamHG
+> Portable exe, ничего ставить не нужно: https://github.com/Owiom/beamhub
 > Моды качаются через браузер (сайты не отдают файл скрипту), приложение подхватывает
 > архив из «Загрузок» и кладёт в папку игры.
 >
@@ -131,7 +131,7 @@ beamng beamngdrive beamng-drive mods mod-manager launcher mod-catalog gaming-too
 это даст больше переходов, чем любой текстовый пост. В описание:
 
 ```
-BeamHub — каталог модов для BeamNG.drive: https://github.com/Owiom/BeamHub-BeamHG
+BeamHub — каталог модов для BeamNG.drive: https://github.com/Owiom/beamhub
 ```
 
 ---

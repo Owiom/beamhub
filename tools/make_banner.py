@@ -53,7 +53,7 @@ def main() -> None:
 
     draw.text((66, 436), "каталог · установка в один клик", font=font(22), fill=(120, 126, 140))
     draw.text((66, 470), "библиотека · обновления · 4 сайта", font=font(22), fill=(120, 126, 140))
-    draw.text((66, 540), "github.com/Owiom/BeamHub-BeamHG", font=font(22, True), fill=ACCENT)
+    draw.text((66, 540), "github.com/Owiom/beamhub", font=font(22, True), fill=ACCENT)
 
     shot_path = ROOT / "docs" / "catalog.png"
     if shot_path.exists():

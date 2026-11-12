@@ -4,11 +4,11 @@
 
 **Один каталог вместо десяти вкладок с файлообменниками.** Ищешь мод, жмёшь «Установить» — BeamHub сам скачивает архив, проверяет его и кладёт в папку игры.
 
-[![Release](https://img.shields.io/github/v/release/Owiom/BeamHub-BeamHG?style=flat-square)](https://github.com/Owiom/BeamHub-BeamHG/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Owiom/BeamHub-BeamHG/total?style=flat-square)](https://github.com/Owiom/BeamHub-BeamHG/releases)
-[![License](https://img.shields.io/github/license/Owiom/BeamHub-BeamHG?style=flat-square)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Owiom/beamhub?style=flat-square)](https://github.com/Owiom/beamhub/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Owiom/beamhub/total?style=flat-square)](https://github.com/Owiom/beamhub/releases)
+[![License](https://img.shields.io/github/license/Owiom/beamhub?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](#установка)
-[![Last commit](https://img.shields.io/github/last-commit/Owiom/BeamHub-BeamHG?style=flat-square)](https://github.com/Owiom/BeamHub-BeamHG/commits/main)
+[![Last commit](https://img.shields.io/github/last-commit/Owiom/beamhub?style=flat-square)](https://github.com/Owiom/beamhub/commits/main)
 
 ![Каталог](docs/catalog.png)
 
@@ -37,7 +37,7 @@
 
 ## Установка
 
-1. Скачай [последний релиз](https://github.com/Owiom/BeamHub-BeamHG/releases/latest) — `BeamHub-vX.Y.Z-win64-portable.zip`.
+1. Скачай [последний релиз](https://github.com/Owiom/beamhub/releases/latest) — `BeamHub-vX.Y.Z-win64-portable.zip`.
 2. Распакуй архив целиком (папка `_internal` должна лежать рядом с `BeamHub.exe`).
 3. Запусти `BeamHub\BeamHub.exe`.
 
@@ -94,7 +94,7 @@ Python и ничего больше ставить не нужно: внутри
 
 ## Участие
 
-Пригодится всё: баг-репорты, идеи, новые источники каталога, код. Читай [CONTRIBUTING.md](CONTRIBUTING.md), открывай [issue](https://github.com/Owiom/BeamHub-BeamHG/issues) — шаблоны уже есть.
+Пригодится всё: баг-репорты, идеи, новые источники каталога, код. Читай [CONTRIBUTING.md](CONTRIBUTING.md), открывай [issue](https://github.com/Owiom/beamhub/issues) — шаблоны уже есть.
 
 English version: [README.en.md](README.en.md)
 

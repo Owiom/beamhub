@@ -4,9 +4,9 @@
 
 **One catalog instead of ten file‑hosting tabs.** Find a mod, press *Install* — BeamHub downloads the archive, validates it and drops it into the game's `mods` folder.
 
-[![Release](https://img.shields.io/github/v/release/Owiom/BeamHub-BeamHG?style=flat-square)](https://github.com/Owiom/BeamHub-BeamHG/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Owiom/BeamHub-BeamHG/total?style=flat-square)](https://github.com/Owiom/BeamHub-BeamHG/releases)
-[![License](https://img.shields.io/github/license/Owiom/BeamHub-BeamHG?style=flat-square)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Owiom/beamhub?style=flat-square)](https://github.com/Owiom/beamhub/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Owiom/beamhub/total?style=flat-square)](https://github.com/Owiom/beamhub/releases)
+[![License](https://img.shields.io/github/license/Owiom/beamhub?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square)](#install)
 
 ![Catalog](docs/catalog.png)
@@ -25,7 +25,7 @@
 
 ## Install
 
-1. Download the [latest release](https://github.com/Owiom/BeamHub-BeamHG/releases/latest) — `BeamHub-vX.Y.Z-win64-portable.zip`.
+1. Download the [latest release](https://github.com/Owiom/beamhub/releases/latest) — `BeamHub-vX.Y.Z-win64-portable.zip`.
 2. Extract the whole archive (the `_internal` folder must stay next to `BeamHub.exe`).
 3. Run `BeamHub\BeamHub.exe`.
 
