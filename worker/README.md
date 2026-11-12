@@ -77,6 +77,28 @@ curl -X POST https://beamhub-feedback.<аккаунт>.workers.dev \
 Ответ `{"ok":true,"sent":["email"]}` — канал сработал. Если `502` — в `detail`
 будет причина (например, `telegram 401` или `email 403`).
 
+## Если воркер отвечает `error code: 1042` или 404
+
+Значит скрипт лежит в воркере в неправильном формате (classic вместо ES module)
+или это заготовка «Hello World» от мастера. Проверка:
+
+```bash
+curl -s -X POST https://<воркер>.workers.dev -H 'content-type: application/json' -d '{"report":"тест"}'
+```
+
+- `{"error":"delivery"...}` — код наш, осталось добавить секреты;
+- `error code: 1042`, `Hello World` или пустой ответ — кода нет, его надо залить.
+
+Исправление: открыть воркер → **Edit code** (или кнопка **Dashboard** рядом
+с деплойментом) → выделить всё, вставить [`index.js`](index.js) → **Deploy**.
+Либо перезаписать через скрипт:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File worker\deploy.ps1 -Name <имя-воркера>
+```
+
+Скрипт загружает код как ES module (`main_module`), поэтому `export default` работает.
+
 ## Ограничения
 
 - отчёт — до 12 000 символов, тело запроса — до 14 КБ;
