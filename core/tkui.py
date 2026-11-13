@@ -7,13 +7,14 @@ API (тот же процесс), картинки — через встроен
 from __future__ import annotations
 
 import json
+import re
 import threading
 import tkinter as tk
 import urllib.parse
 import urllib.request
 from tkinter import messagebox, ttk
 
-from . import theme
+from . import i18n, theme
 
 BG = "#0d0e11"
 SOFT = "#12141a"
@@ -120,6 +121,7 @@ class App:
         self.refresh_meta()
         self.poll_events()
         self.root.after(5000, lambda: self.check_updates(silent=True))
+        self.root.after(1500, self._lang_tick)
 
     # ---------------------------------------------------------------- стиль
     def _styles(self) -> None:
@@ -182,6 +184,10 @@ class App:
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left", padx=8)
         theme.RoundButton(top, "＋ Ссылка", self.on_add_link, height=32, font=(FONT, 9),
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left")
+        self.lang_button = theme.RoundButton(top, self._lang_label(), self.toggle_language,
+                                             height=32, font=(FONT_BOLD, 9), width=54,
+                                             bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8)
+        self.lang_button.pack(side="left", padx=8)
 
         body = tk.Frame(self.root, bg=BG)
         body.grid(row=1, column=0, sticky="nsew")
@@ -363,6 +369,7 @@ class App:
 
     def toast(self, text: str, kind: str = "info") -> None:
         """Всплывающее уведомление снизу справа — чтобы события не терялись в строке статуса."""
+        text = i18n.tr(text)
         palette = {"info": (PANEL, TEXT), "ok": ("#16241a", "#b8e6c2"),
                    "error": ("#2a1518", "#ffb3b3")}
         bg, fg = palette.get(kind, palette["info"])
@@ -428,6 +435,116 @@ class App:
         self.switch(self.view)
         self.refresh_meta()
 
+    # ---------------------------------------------------------------- язык
+    def _lang_label(self) -> str:
+        return "EN" if i18n.current() == "ru" else "RU"
+
+    def toggle_language(self) -> None:
+        self.set_language("en" if i18n.current() == "ru" else "ru")
+
+    def _lang_tick(self) -> None:
+        """Подстраховка: перевести то, что появилось после перерисовки (диалоги, тосты)."""
+        try:
+            self._translate_ui(self.root)
+        except Exception:  # noqa: BLE001
+            pass
+        self.root.after(2500, self._lang_tick)
+
+    def set_language(self, code: str) -> None:
+        i18n.set_lang(code)
+        try:
+            self.api.post("/api/settings", {"language": i18n.current()})
+        except Exception:  # noqa: BLE001
+            pass
+        self._translate_ui(self.root)
+        self.refresh_all()
+        try:
+            self.lang_button.configure(text=self._lang_label())
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _translate_ui(self, widget=None) -> None:
+        """Перевести все подписи в дереве виджетов (и вернуть русские при откате)."""
+        widget = widget or self.root
+        english = i18n.current() == "en"
+        try:
+            klass = widget.winfo_class()
+        except Exception:  # noqa: BLE001
+            return
+
+        if klass in ("Tk", "Toplevel"):
+            try:
+                current = widget.title()
+                if english and re.search("[А-Яа-яЁё]", current):
+                    widget._ru_title = getattr(widget, "_ru_title", current)
+                    widget.title(i18n.tr(current))
+                elif not english and getattr(widget, "_ru_title", None):
+                    widget.title(widget._ru_title)
+            except Exception:  # noqa: BLE001
+                pass
+
+        if klass in ("Label", "Button", "Checkbutton", "Radiobutton", "TLabel", "TButton"):
+            try:
+                current = widget.cget("text")
+            except Exception:  # noqa: BLE001
+                current = None
+            if current is not None:
+                if english:
+                    original = getattr(widget, "_ru_text", None)
+                    # текст поменялся на другой русский — запоминаем новую основу
+                    if re.search("[А-Яа-яЁё]", current) and (not original or current != i18n.tr(original)):
+                        widget._ru_text = current
+                        original = current
+                    if original:
+                        translated = i18n.tr(original)
+                        if translated != current:
+                            widget.configure(text=translated)
+                else:
+                    original = getattr(widget, "_ru_text", None)
+                    if original and current != original:
+                        widget.configure(text=original)
+
+        if klass == "TCombobox":
+            try:
+                values = list(widget.cget("values"))
+            except Exception:  # noqa: BLE001
+                values = []
+            if english and widget.get() and re.search("[А-Яа-яЁё]", widget.get()):
+                widget._ru_value = getattr(widget, "_ru_value", widget.get())
+                widget.set(i18n.tr(widget._ru_value))
+            elif not english and getattr(widget, "_ru_value", None):
+                widget.set(widget._ru_value)
+            if values and english:
+                widget._ru_values = getattr(widget, "_ru_values", values)
+                widget.configure(values=[i18n.tr(v) for v in getattr(widget, "_ru_values", values)])
+            elif values and not english and getattr(widget, "_ru_values", None):
+                widget.configure(values=list(widget._ru_values))
+
+        if isinstance(widget, tk.Canvas):
+            store = getattr(widget, "_ru_items", {})
+            for item in widget.find_all():
+                if widget.type(item) != "text":
+                    continue
+                current = widget.itemcget(item, "text")
+                if not current:
+                    continue
+                if english:
+                    if re.search("[А-Яа-яЁё]", current):
+                        store[item] = current
+                    original = store.get(item)
+                    if original:
+                        new = i18n.tr(original)
+                        if new != current:
+                            widget.itemconfigure(item, text=new)
+                else:
+                    original = store.get(item)
+                    if original and current != original:
+                        widget.itemconfigure(item, text=original)
+            widget._ru_items = store
+
+        for child in widget.winfo_children():
+            self._translate_ui(child)
+
     # ---------------------------------------------------------------- навигация
     def switch(self, view: str) -> None:
         self.view = view
@@ -445,6 +562,7 @@ class App:
             self.render_inbox()
         else:
             self.render_settings()
+        self._translate_ui(self.root)
 
     def _clear(self) -> None:
         for child in self.canvas.winfo_children():
@@ -978,6 +1096,17 @@ class App:
                        activebackground=BG, activeforeground=TEXT,
                        font=(FONT, 10)).pack(anchor="w", pady=6)
 
+        lang_block = tk.Frame(frame, bg=BG)
+        lang_block.pack(fill="x", pady=8)
+        tk.Label(lang_block, text="Язык", bg=BG, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x")
+        lang_chips = tk.Frame(lang_block, bg=BG)
+        lang_chips.pack(anchor="w", pady=4)
+        for code, label in (("ru", "Русский"), ("en", "English")):
+            theme.RoundButton(lang_chips, label, lambda c=code: self.set_language(c),
+                              height=30, radius=8, font=(FONT, 9),
+                              variant=("primary" if i18n.current() == code else "ghost")
+                              ).pack(side="left", padx=(0, 8))
         buttons = tk.Frame(frame, bg=BG)
         buttons.pack(fill="x", pady=10)
         theme.RoundButton(buttons, "Сохранить", self.save_settings, variant="primary",
@@ -1301,7 +1430,7 @@ class App:
         self.root.after(300, self.root.destroy)
 
     def set_status(self, text: str) -> None:
-        self.status.configure(text=text)
+        self.status.configure(text=i18n.tr(text))
 
     def refresh_meta(self) -> None:
         def work() -> None:
@@ -1335,6 +1464,10 @@ class App:
                 self.source_var.set("Все источники")
                 self.source = "all"
 
+        lang = (state.get("settings") or {}).get("language")
+        if lang and lang != i18n.current() and not getattr(self, "_lang_from_settings", False):
+            self._lang_from_settings = True
+            i18n.set_lang(lang)
         if state.get("game_running"):
             self.status.configure(
                 text="BeamNG.drive запущена — моды подхватятся после перезапуска игры",
@@ -1412,6 +1545,7 @@ class App:
                 widget.bind("<Enter>", lambda _e, k=key: self._paint_cat(k, hover=True))
                 widget.bind("<Leave>", lambda _e, k=key: self._paint_cat(k))
             self._paint_cat(key)
+        self._translate_ui(self.root)
 
     def _paint_cat(self, key: str, hover: bool = False) -> None:
         parts = self.cat_parts.get(key)
