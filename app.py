@@ -54,7 +54,7 @@ def _startup_failure(details: str) -> None:
 
 try:
     from core import (accounts, collections, config, db, enrich, feedback, installer,
-                      matcher, security, updater)  # noqa: E402
+                      matcher, security, social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -688,10 +688,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": data.get("error", "Не найдено")}, status=404)
                 return True
             coll = data["collection"]
+            coll["my_rating"] = social.my_rating(viewer["id"] if viewer else "",
+                                                 "collection", coll_id)
+            coll["comments_count"] = social.comments("collection", coll_id)["count"]
             if coll["published"] and (not viewer or viewer["id"] != coll["owner_id"]):
                 collections.record_event("view", coll_id=coll_id,
                                          user_id=viewer["id"] if viewer else "")
             self._json(data)
+            return True
+        if path == "/api/comments":
+            target_type = arg("target_type", "collection")
+            self._json(social.comments(target_type, arg("target_id"),
+                                       self._current_user()["id"] if self._current_user() else ""))
+            return True
+        if path == "/api/reviews":
+            viewer = self._current_user()
+            self._json(social.reviews(arg("target_type", "collection"), arg("target_id"),
+                                      viewer["id"] if viewer else "",
+                                      only_installed=arg("installed") == "1"))
             return True
         if path == "/api/collections/plan":
             viewer = self._current_user()
@@ -742,6 +756,48 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(accounts.unfollow(user["id"], target))
             else:
                 self._json(accounts.follow(user["id"], target))
+            return True
+        if path == "/api/comments":
+            user = self._require_user()
+            if not user:
+                return True
+            result = social.add_comment(user["id"], body.get("target_type", "collection"),
+                                        body.get("target_id", ""), body.get("body", ""),
+                                        body.get("parent_id", ""))
+            if not result.get("ok"):
+                self._json(result)
+                return True
+            self._json(social.comments(body.get("target_type", "collection"),
+                                       body.get("target_id", ""), user["id"]))
+            return True
+        if path == "/api/comments/update":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(social.update_comment(user["id"], body.get("id", ""),
+                                             body.get("body", "")))
+            return True
+        if path == "/api/comments/delete":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(social.delete_comment(user["id"], body.get("id", ""),
+                                             accounts.is_moderator(user)))
+            return True
+        if path == "/api/ratings":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(social.set_rating(user["id"], body.get("target_type", "collection"),
+                                         body.get("target_id", ""), body.get("stars", 0),
+                                         body.get("review", "")))
+            return True
+        if path == "/api/ratings/delete":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(social.delete_rating(user["id"], body.get("target_type", "collection"),
+                                            body.get("target_id", "")))
             return True
         if path == "/api/collections/create":
             user = self._require_user()

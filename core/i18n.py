@@ -178,7 +178,28 @@ EN: dict[str, str] = {
     "Никнейм (для регистрации)": "Nickname (for sign-up)",
     "У меня уже есть аккаунт": "I already have an account",
     "Зарегистрироваться": "Sign up",
-    "Регистрация: email, пароль и никнейм": "Sign-up: email, password and nickname"
+    "Регистрация: email, пароль и никнейм": "Sign-up: email, password and nickname",
+    # отзывы и комментарии
+    "Ваша оценка": "Your rating",
+    "Сохранить оценку": "Save rating",
+    "Удалить оценку": "Remove rating",
+    "Отзывы": "Reviews",
+    "Комментарии": "Comments",
+    "Пока никто не комментировал.": "No comments yet.",
+    "Ответить": "Reply",
+    "Изменить": "Edit",
+    "Отправить": "Send",
+    "изменён": "edited",
+    "Комментарий удалён": "Comment deleted",
+    "Отзывы —": "Reviews —",
+    "✕ установил": "✓ installed",
+    "✓ установил": "✓ installed",
+    "оценок": "ratings",
+    "от установивших": "from owners",
+    "комментариев": "comments",
+    "Поставьте оценку от 1 до 5": "Pick a rating from 1 to 5",
+    "Оценка сохранена": "Rating saved",
+    "Войдите, чтобы оценивать и комментировать": "Sign in to rate and comment"
 }
 
 # подстроки и шаблоны для динамических строк

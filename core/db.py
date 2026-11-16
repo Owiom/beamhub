@@ -177,6 +177,11 @@ CREATE TABLE IF NOT EXISTS stats_events(
     user_id TEXT DEFAULT '',
     created_at INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS rate_limits(
+    key TEXT PRIMARY KEY,
+    window_start INTEGER DEFAULT 0,
+    count INTEGER DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS collections_owner ON collections(owner_id);
 CREATE INDEX IF NOT EXISTS collections_pub ON collections(published, created_at DESC);
 CREATE INDEX IF NOT EXISTS collection_items_coll ON collection_items(collection_id, position);

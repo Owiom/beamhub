@@ -16,6 +16,7 @@ import urllib.request
 from tkinter import messagebox, ttk
 
 from . import i18n, theme
+from .util import human_ago
 
 BG = "#0d0e11"
 SOFT = "#12141a"
@@ -1349,6 +1350,9 @@ class App:
             "Установить сборку" + (f" ({missing_count})" if missing_count else ""),
             lambda: self.apply_collection(coll_id, window), variant="primary",
             height=32, radius=9, font=(FONT_BOLD, 9)).pack(side="left")
+        theme.RoundButton(actions, f"Отзывы ({coll.get('comments_count', 0)})",
+                          lambda: self.collection_reviews(coll_id, coll.get("title") or ""),
+                          height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
         if coll.get("is_owner"):
             theme.RoundButton(actions, "＋ Добавить мод",
                               lambda: self.pick_mod(coll_id, window), height=32, radius=9,
@@ -1403,6 +1407,243 @@ class App:
                 f"v{v['version']} ({v.get('count', 0)} модов)" for v in history[:6]),
                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", padx=20, pady=(6, 12))
         self._translate_ui(window)
+
+    # ---------------------------------------------------------------- отзывы
+    def collection_reviews(self, coll_id: str, title: str = "") -> None:
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title(f"Отзывы — {title}" if title else "Отзывы")
+        window.geometry("760x720")
+        window.transient(self.root)
+        body = tk.Frame(window, bg=BG)
+        body.pack(fill="both", expand=True)
+
+        stars_var = {"value": 0}
+
+        def render() -> None:
+            for child in body.winfo_children():
+                child.destroy()
+            try:
+                data = self.api.get("/api/collection", id=coll_id)
+                comments_data = self.api.get("/api/comments", target_type="collection",
+                                             target_id=coll_id)
+                reviews_data = self.api.get("/api/reviews", target_type="collection",
+                                            target_id=coll_id)
+            except Exception as exc:  # noqa: BLE001
+                tk.Label(body, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+                return
+            coll = data.get("collection") or {}
+            summary = reviews_data.get("summary") or {}
+            mine = coll.get("my_rating") or {}
+            if not stars_var["value"]:
+                stars_var["value"] = int(mine.get("stars") or 0)
+
+            head = tk.Frame(body, bg=BG)
+            head.pack(fill="x", padx=18, pady=(14, 4))
+            tk.Label(head, text=coll.get("title") or title, bg=BG, fg=TEXT,
+                     font=(FONT_BOLD, 14), anchor="w").pack(fill="x")
+            tk.Label(head, text=f"★ {summary.get('avg', 0):.1f} · "
+                                f"{summary.get('count', 0)} оценок · "
+                                f"{summary.get('installed_reviews', 0)} от установивших · "
+                                f"{comments_data.get('count', 0)} комментариев",
+                     bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
+
+            if self.user:
+                box = tk.Frame(body, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+                box.pack(fill="x", padx=18, pady=8)
+                tk.Label(box, text="Ваша оценка", bg=PANEL, fg=TEXT, font=(FONT_BOLD, 10),
+                         anchor="w").pack(fill="x", padx=10, pady=(8, 2))
+                star_row = tk.Frame(box, bg=PANEL)
+                star_row.pack(anchor="w", padx=10)
+
+                def set_stars(value: int) -> None:
+                    stars_var["value"] = value
+                    for index, button in enumerate(star_buttons, start=1):
+                        button.configure(text="★" if index <= value else "☆")
+
+                star_buttons = []
+                for value in range(1, 6):
+                    button = theme.RoundButton(
+                        star_row, "★" if value <= stars_var["value"] else "☆",
+                        lambda v=value: set_stars(v), width=34, height=30, radius=8,
+                        font=(FONT, 13), bg=PANEL, fg="#ffd08a", hover=ACTIVE_BG)
+                    button.pack(side="left", padx=2)
+                    star_buttons.append(button)
+
+                review_text = tk.Text(box, height=3, bg="#12141a", fg=TEXT, relief="flat",
+                                      insertbackground=TEXT, font=(FONT, 9), wrap="word")
+                review_text.insert("1.0", mine.get("review") or "")
+                review_text.pack(fill="x", padx=10, pady=(6, 4))
+
+                def save_rating() -> None:
+                    stars = stars_var["value"]
+                    if not stars:
+                        self.toast("Поставьте оценку от 1 до 5", "error")
+                        return
+                    result = self.api.post("/api/ratings", {
+                        "target_type": "collection", "target_id": coll_id,
+                        "stars": stars,
+                        "review": review_text.get("1.0", "end").strip(),
+                    })
+                    if not result.get("ok"):
+                        self.toast(result.get("error", "Не удалось сохранить"), "error")
+                        return
+                    self.toast("Оценка сохранена", "ok")
+                    render()
+
+                def clear_rating() -> None:
+                    self.api.post("/api/ratings/delete", {"target_type": "collection",
+                                                          "target_id": coll_id})
+                    stars_var["value"] = 0
+                    render()
+
+                actions = tk.Frame(box, bg=PANEL)
+                actions.pack(fill="x", padx=10, pady=(0, 8))
+                theme.RoundButton(actions, "Сохранить оценку", save_rating, variant="primary",
+                                  height=30, radius=8, font=(FONT_BOLD, 9)).pack(side="left")
+                theme.RoundButton(actions, "Удалить оценку", clear_rating, height=30, radius=8,
+                                  font=(FONT, 9)).pack(side="left", padx=8)
+            else:
+                row = tk.Frame(body, bg=BG)
+                row.pack(fill="x", padx=18, pady=8)
+                tk.Label(row, text="Войдите, чтобы оценивать и комментировать", bg=BG, fg=DIM,
+                         font=(FONT, 9)).pack(side="left")
+                theme.RoundButton(row, "Войти", self.open_auth, variant="primary", height=30,
+                                  radius=8, font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+
+            # отзывы с текстом
+            reviews = [r for r in reviews_data.get("items", []) if r.get("review")]
+            if reviews:
+                tk.Label(body, text="Отзывы", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                         anchor="w").pack(fill="x", padx=18, pady=(8, 2))
+                for review in reviews[:10]:
+                    line = tk.Frame(body, bg=PANEL)
+                    line.pack(fill="x", padx=18, pady=2)
+                    head_line = tk.Frame(line, bg=PANEL)
+                    head_line.pack(fill="x", padx=10, pady=(6, 0))
+                    tk.Label(head_line, text="★" * review["stars"], bg=PANEL, fg="#ffd08a",
+                             font=(FONT, 9)).pack(side="left")
+                    tk.Label(head_line, text=review["nickname"], bg=PANEL, fg=TEXT,
+                             font=(FONT_BOLD, 9)).pack(side="left", padx=6)
+                    if review.get("installed"):
+                        tk.Label(head_line, text="✓ установил", bg="#16241a", fg="#8fe0a4",
+                                 font=(FONT, 8), padx=6).pack(side="left")
+                    tk.Label(line, text=review["review"], bg=PANEL, fg=MUTED, font=(FONT, 9),
+                             wraplength=680, justify="left", anchor="w").pack(
+                        fill="x", padx=10, pady=(2, 8))
+
+            tk.Label(body, text="Комментарии", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                     anchor="w").pack(fill="x", padx=18, pady=(10, 2))
+            if not comments_data.get("items"):
+                tk.Label(body, text="Пока никто не комментировал.", bg=BG, fg=DIM,
+                         font=(FONT, 9), anchor="w").pack(fill="x", padx=18)
+
+            def comment_block(parent: tk.Misc, comment: dict, depth: int = 0) -> None:
+                wrap = tk.Frame(parent, bg=BG)
+                wrap.pack(fill="x", padx=(18 + depth * 26, 18), pady=2)
+                line = tk.Frame(wrap, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+                line.pack(fill="x")
+                top = tk.Frame(line, bg=PANEL)
+                top.pack(fill="x", padx=10, pady=(6, 0))
+                author = comment.get("author") or {}
+                tk.Label(top, text=author.get("nickname") or "?", bg=PANEL, fg=TEXT,
+                         font=(FONT_BOLD, 9)).pack(side="left")
+                tk.Label(top, text=" · " + human_ago(comment.get("created_at")), bg=PANEL,
+                         fg=DIM, font=(FONT, 8)).pack(side="left")
+                if comment.get("edited"):
+                    tk.Label(top, text=" · изменён", bg=PANEL, fg=DIM, font=(FONT, 8)
+                             ).pack(side="left")
+                if comment.get("deleted"):
+                    tk.Label(line, text="Комментарий удалён", bg=PANEL, fg=DIM, font=(FONT, 9),
+                             anchor="w").pack(fill="x", padx=10, pady=(2, 8))
+                    return
+                tk.Label(line, text=comment.get("body"), bg=PANEL, fg=TEXT, font=(FONT, 9),
+                         wraplength=640, justify="left", anchor="w").pack(
+                    fill="x", padx=10, pady=(2, 4))
+                tools = tk.Frame(line, bg=PANEL)
+                tools.pack(fill="x", padx=10, pady=(0, 6))
+                if self.user:
+                    theme.RoundButton(
+                        tools, "Ответить",
+                        lambda c=comment: reply_box(c["id"], author.get("nickname") or ""),
+                        height=26, radius=8, font=(FONT, 8)).pack(side="left", padx=(0, 6))
+                if comment.get("is_mine"):
+                    theme.RoundButton(tools, "Изменить",
+                                      lambda c=comment: edit_comment(c["id"], c.get("body")),
+                                      height=26, radius=8, font=(FONT, 8)
+                                      ).pack(side="left", padx=(0, 6))
+                if comment.get("is_mine") or comment.get("can_moderate"):
+                    theme.RoundButton(tools, "Удалить",
+                                      lambda c=comment: remove_comment(c["id"]),
+                                      height=26, radius=8, font=(FONT, 8)).pack(side="left")
+                for reply in comment.get("replies") or []:
+                    comment_block(parent, reply, depth + 1)
+
+            for comment in comments_data.get("items", []):
+                comment_block(body, comment)
+
+            if self.user:
+                compose = tk.Frame(body, bg=BG)
+                compose.pack(fill="x", padx=18, pady=(10, 16))
+                entry = tk.Text(compose, height=2, bg=PANEL, fg=TEXT, relief="flat",
+                                insertbackground=TEXT, font=(FONT, 9), wrap="word")
+                entry.pack(fill="x", pady=(0, 4))
+
+                def send_comment() -> None:
+                    text = entry.get("1.0", "end").strip()
+                    if not text:
+                        return
+                    result = self.api.post("/api/comments", {
+                        "target_type": "collection", "target_id": coll_id, "body": text})
+                    if not result.get("ok"):
+                        self.toast(result.get("error", "Не удалось отправить"), "error")
+                        return
+                    render()
+
+                theme.RoundButton(compose, "Отправить", send_comment, variant="primary",
+                                  height=30, radius=8, font=(FONT_BOLD, 9)).pack(side="left")
+                compose_entry = entry
+            else:
+                compose_entry = None
+
+            def reply_box(parent_id: str, nickname: str) -> None:
+                if compose_entry is None:
+                    return
+                compose_entry.focus_set()
+                compose_entry.delete("1.0", "end")
+                compose_entry.insert("1.0", f"@{nickname}, ")
+
+            def edit_comment(comment_id: str, old: str) -> None:
+                dialog = tk.Toplevel(window, bg=BG)
+                dialog.title("Изменить комментарий")
+                dialog.geometry("520x260")
+                dialog.transient(window)
+                text = tk.Text(dialog, height=6, bg=PANEL, fg=TEXT, relief="flat",
+                               insertbackground=TEXT, font=(FONT, 9), wrap="word")
+                text.insert("1.0", old or "")
+                text.pack(fill="both", expand=True, padx=14, pady=12)
+
+                def save() -> None:
+                    result = self.api.post("/api/comments/update",
+                                           {"id": comment_id, "body": text.get("1.0", "end").strip()})
+                    if not result.get("ok"):
+                        self.toast(result.get("error", "Не удалось изменить"), "error")
+                        return
+                    dialog.destroy()
+                    render()
+
+                theme.RoundButton(dialog, "Сохранить", save, variant="primary", height=30,
+                                  radius=8, font=(FONT_BOLD, 9)).pack(padx=14, pady=(0, 12))
+
+            def remove_comment(comment_id: str) -> None:
+                result = self.api.post("/api/comments/delete", {"id": comment_id})
+                if not result.get("ok"):
+                    self.toast(result.get("error", "Не удалось удалить"), "error")
+                    return
+                render()
+
+            self._translate_ui(window)
+
+        render()
 
     def publish_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
         result = self.api.post("/api/collections/publish", {"id": coll_id})
