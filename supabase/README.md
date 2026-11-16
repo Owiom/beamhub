@@ -69,6 +69,21 @@ py build_exe.py --onedir
 Ключ **anon** публичный, его не страшно распространять: доступ к данным закрывают
 RLS-политики из [`schema.sql`](schema.sql). **service_role** вшивать нельзя ни в коем случае.
 
+## Вход через Discord (необязательно)
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**.
+2. Слева **OAuth2** → скопировать **Client ID** и **Client Secret**.
+3. Там же **Redirects** → **Add Redirect** → `https://<project>.supabase.co/auth/v1/callback`
+   → **Save Changes**.
+4. Supabase → **Authentication → Sign In / Providers → Discord** → включить,
+   вставить Client ID и Secret → **Save**.
+5. Supabase → **Authentication → URL Configuration → Redirect URLs** → добавить
+   `http://127.0.0.1:8787/api/auth/callback`.
+
+В BeamHub появятся кнопки «Войти через Google» и «Войти через Discord».
+Discord **не заменяет** Supabase: аккаунт и общие данные всё равно живут в проекте Supabase,
+Discord — только способ подтвердить, кто вы.
+
 ## Что синхронизируется
 
 - профиль и вход (email/пароль или Google);

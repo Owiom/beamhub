@@ -140,6 +140,11 @@ check("в ссылке redirect", query.get("redirect_to") == ["http://127.0.0.1
 check("в ссылке challenge", query.get("code_challenge") == [challenge])
 check("метод S256", query.get("code_challenge_method") == ["s256"])
 check("state передаётся", query.get("state") == ["st-1"])
+discord_url = cloud.authorize_url(BASE, "http://127.0.0.1:8787/api/auth/callback", "st-2",
+                                  verifier, provider="discord")
+discord_query = urllib.parse.parse_qs(urllib.parse.urlsplit(discord_url).query)
+check("discord в ссылке", discord_query.get("provider") == ["discord"], discord_url[:80])
+check("discord с PKCE", discord_query.get("code_challenge_method") == ["s256"])
 
 print("[3] обмен кода и профиль")
 ok = cloud.exchange_code(BASE, KEY, "good-code", verifier)

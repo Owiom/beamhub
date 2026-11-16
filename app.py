@@ -896,7 +896,7 @@ class Handler(BaseHTTPRequestHandler):
             config.update({"cloud_url": url, "cloud_anon_key": key})
             self._json({"ok": True, "configured": cloud.configured()})
             return True
-        if path == "/api/auth/google/start":
+        if path in ("/api/auth/google/start", "/api/auth/oauth/start"):
             if not cloud.configured():
                 self._json({"ok": False,
                             "error": "Укажите адрес Supabase и anon key в настройках."})
@@ -904,13 +904,17 @@ class Handler(BaseHTTPRequestHandler):
             base, key = cloud.settings()
             port = self.server.server_address[1]
             redirect_to = f"http://127.0.0.1:{port}/api/auth/callback"
+            provider = (body.get("provider") or "google").strip().lower()
+            if provider not in ("google", "discord"):
+                self._json({"ok": False, "error": "Такой провайдер не поддерживается."})
+                return True
             state = secrets.token_urlsafe(18)
             verifier = cloud.make_verifier()
             CLOUD_STATES.add(state, verifier, redirect_to)
-            CLOUD_LOGINS[state] = {"status": "pending"}
-            url = cloud.authorize_url(base, redirect_to, state, verifier)
+            CLOUD_LOGINS[state] = {"status": "pending", "provider": provider}
+            url = cloud.authorize_url(base, redirect_to, state, verifier, provider=provider)
             open_in_browser(url)
-            self._json({"ok": True, "state": state, "url": url})
+            self._json({"ok": True, "state": state, "url": url, "provider": provider})
             return True
         if path == "/api/moderation/report":
             user = self._require_user()
@@ -1084,7 +1088,8 @@ class Handler(BaseHTTPRequestHandler):
             CLOUD_LOGINS[state] = {"status": "error", "error": "Профиль не получен."}
             self._html_page("Ошибка входа", "Не удалось получить профиль Google.", ok=False)
             return
-        local = accounts.upsert_provider_user("google", user["id"], user.get("email", ""),
+        provider = (entry or {}).get("provider") or "google"
+        local = accounts.upsert_provider_user(provider, user["id"], user.get("email", ""),
                                               cloud.nickname_from(user))
         if not local.get("ok"):
             CLOUD_LOGINS[state] = {"status": "error", "error": "Не удалось создать аккаунт."}

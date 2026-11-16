@@ -1275,8 +1275,9 @@ class App:
                               font=(FONT_BOLD, 9)).pack(side="left")
             theme.RoundButton(cloud_actions, "Создать аккаунт", lambda: cloud_submit("signup"),
                               height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
-            tk.Label(cloud_actions, text="аккаунт BeamHub", bg=BG, fg=DIM,
-                     font=(FONT, 8)).pack(side="left")
+            theme.RoundButton(cloud_actions, "Discord",
+                              lambda: self.oauth_login("discord", window), height=32, radius=9,
+                              font=(FONT, 9)).pack(side="left")
 
         def submit() -> None:
             payload = {"email": email.get().strip(), "password": password.get()}
@@ -2048,6 +2049,9 @@ class App:
         self.toast(f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok")
 
     def google_login(self, window: tk.Misc | None = None) -> None:
+        self.oauth_login("google", window)
+
+    def oauth_login(self, provider: str, window: tk.Misc | None = None) -> None:
         try:
             status = self.api.get("/api/auth/cloud")
         except Exception as exc:  # noqa: BLE001
@@ -2056,12 +2060,14 @@ class App:
         if not status.get("configured"):
             self.toast("Сначала укажите адрес Supabase и anon key", "error")
             return
-        result = self.api.post("/api/auth/google/start", {})
+        result = self.api.post("/api/auth/oauth/start", {"provider": provider})
         if not result.get("ok"):
             self.toast(result.get("error", "Не удалось начать вход"), "error")
             return
         state = result.get("state", "")
-        self.toast("Открыл браузер — выберите аккаунт Google", "ok")
+        titles = {"google": "Google", "discord": "Discord"}
+        self.toast(f"Открыл браузер — выберите аккаунт {titles.get(provider, provider)}",
+                   "ok")
         if window is not None:
             window.destroy()
 
@@ -2202,6 +2208,9 @@ class App:
                           height=30, radius=8, font=(FONT, 9)).pack(side="left", padx=8)
         theme.RoundButton(buttons, "Войти через Google", self.google_login, height=30,
                           radius=8, font=(FONT, 9)).pack(side="left", padx=8)
+        theme.RoundButton(buttons, "Войти через Discord",
+                          lambda: self.oauth_login("discord"), height=30, radius=8,
+                          font=(FONT, 9)).pack(side="left")
         theme.RoundButton(buttons, "Мои сборки в облако", self.sync_push, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left", padx=(0, 8))
         theme.RoundButton(buttons, "Загрузить из облака", self.sync_pull, height=30, radius=8,
