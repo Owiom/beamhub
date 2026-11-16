@@ -28,7 +28,8 @@ returns boolean language sql stable security definer as $$
 $$;
 
 create table if not exists public.collections (
-    id uuid primary key default gen_random_uuid(),
+    -- id приходит из клиента (col_xxx): так локальные и облачные сборки совпадают
+    id text primary key,
     owner_id uuid not null references auth.users (id) on delete cascade,
     title text not null check (char_length(title) between 3 and 80),
     description text default '',
@@ -46,7 +47,7 @@ create table if not exists public.collections (
 );
 
 create table if not exists public.collection_items (
-    collection_id uuid not null references public.collections (id) on delete cascade,
+    collection_id text not null references public.collections (id) on delete cascade,
     mod_id text not null,
     position int default 0,
     note text default '',
@@ -56,7 +57,7 @@ create table if not exists public.collection_items (
 
 create table if not exists public.collection_versions (
     id bigserial primary key,
-    collection_id uuid not null references public.collections (id) on delete cascade,
+    collection_id text not null references public.collections (id) on delete cascade,
     version int not null,
     snapshot jsonb default '[]'::jsonb,
     note text default '',
@@ -210,7 +211,7 @@ create policy "stats write own" on public.mod_stats for all
     using (public.is_moderator()) with check (public.is_moderator());
 
 -- счётчики просмотров/установок не даём крутить вручную: обновляются через RPC
-create or replace function public.bump_collection(p_collection uuid, p_kind text)
+create or replace function public.bump_collection(p_collection text, p_kind text)
 returns void language plpgsql security definer as $$
 begin
     if p_kind = 'view' then

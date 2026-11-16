@@ -69,6 +69,9 @@ DEFAULTS = {
     # Supabase: адрес проекта и публичный anon key (секретов здесь нет)
     "cloud_url": "",
     "cloud_anon_key": "",
+    # uuid пользователя Supabase и refresh-токен (нужны для синхронизации)
+    "cloud_uid": "",
+    "cloud_refresh": "",
 }
 
 _cached = None

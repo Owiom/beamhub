@@ -2010,6 +2010,7 @@ class App:
                         f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok"))
                     self.root.after(0, self._apply_user)
                     self.root.after(0, self.refresh_all)
+                    self.root.after(0, self.sync_pull)
                     return
                 if poll.get("status") == "error":
                     message = poll.get("error", "вход не удался")
@@ -2017,6 +2018,40 @@ class App:
                     return
                 time.sleep(1)
         threading.Thread(target=wait, daemon=True).start()
+
+    def sync_push(self) -> None:
+        def work() -> None:
+            try:
+                result = self.api.post("/api/sync/push", {})
+            except Exception as exc:  # noqa: BLE001
+                self.root.after(0, lambda e=exc: self.toast(f"Ошибка: {e}", "error"))
+                return
+            if not result.get("ok"):
+                message = result.get("error", "не вышло")
+                self.root.after(0, lambda m=message: self.toast(m, "error"))
+                return
+            text = f"Отправлено сборок: {result.get('pushed')} из {result.get('total')}"
+            if result.get("errors"):
+                text += " · часть не ушла"
+            self.root.after(0, lambda t=text: self.toast(t, "ok"))
+            self.root.after(0, self.refresh_all)
+        threading.Thread(target=work, daemon=True).start()
+
+    def sync_pull(self) -> None:
+        def work() -> None:
+            try:
+                result = self.api.post("/api/sync/pull", {})
+            except Exception as exc:  # noqa: BLE001
+                self.root.after(0, lambda e=exc: self.toast(f"Ошибка: {e}", "error"))
+                return
+            if not result.get("ok"):
+                message = result.get("error", "не вышло")
+                self.root.after(0, lambda m=message: self.toast(m, "error"))
+                return
+            pulled = result.get("pulled", 0)
+            self.root.after(0, lambda n=pulled: self.toast(f"Получено сборок: {n}", "ok"))
+            self.root.after(0, self.refresh_all)
+        threading.Thread(target=work, daemon=True).start()
 
     def cloud_block(self, frame: tk.Frame, settings: dict) -> None:
         block = tk.Frame(frame, bg=BG)
@@ -2054,6 +2089,10 @@ class App:
                           font=(FONT, 9)).pack(side="left")
         theme.RoundButton(buttons, "Войти через Google", self.google_login, variant="primary",
                           height=30, radius=8, font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+        theme.RoundButton(buttons, "Мои сборки в облако", self.sync_push, height=30, radius=8,
+                          font=(FONT, 9)).pack(side="left", padx=(0, 8))
+        theme.RoundButton(buttons, "Загрузить из облака", self.sync_pull, height=30, radius=8,
+                          font=(FONT, 9)).pack(side="left")
         configured = bool((settings.get("cloud_url") or "").startswith("https://")
                           and settings.get("cloud_anon_key"))
         tk.Label(block,

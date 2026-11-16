@@ -237,6 +237,9 @@ def init() -> None:
             if "title_key" not in mod_columns:
                 _conn.execute("ALTER TABLE mods ADD COLUMN title_key TEXT DEFAULT ''")
             _conn.execute("CREATE INDEX IF NOT EXISTS mods_title_key ON mods(title_key)")
+            coll_columns = {row["name"] for row in _conn.execute("PRAGMA table_info(collections)")}
+            if "remote" not in coll_columns:
+                _conn.execute("ALTER TABLE collections ADD COLUMN remote INTEGER DEFAULT 0")
             _conn.commit()
             _backfill_title_keys()
 

@@ -54,8 +54,9 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, cloud, collections, compat, config, db, enrich, feedback,
-                      installer, matcher, moderation, recommend, security, social, updater)  # noqa: E402
+    from core import (accounts, cloud, cloud_session, cloud_sync, collections, compat, config,
+                      db, enrich, feedback, installer, matcher, moderation, recommend, security,
+                      social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -746,6 +747,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(data if data.get("ok") else
                        {"ok": False, "error": data.get("error", "Не найдено")})
             return True
+        if path == "/api/sync/status":
+            self._json({"ok": True, **cloud_sync.status()})
+            return True
         if path == "/api/auth/cloud":
             url, key = cloud.settings()
             self._json({"ok": True, "configured": cloud.configured(),
@@ -821,6 +825,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(accounts.unfollow(user["id"], target))
             else:
                 self._json(accounts.follow(user["id"], target))
+            return True
+        if path == "/api/sync/push":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(cloud_sync.push())
+            return True
+        if path == "/api/sync/pull":
+            self._json(cloud_sync.pull())
             return True
         if path == "/api/cloud/settings":
             url = (body.get("url") or "").strip().rstrip("/")
@@ -1027,6 +1040,8 @@ class Handler(BaseHTTPRequestHandler):
             "access_token": result["access_token"],
             "refresh_token": result.get("refresh_token", ""),
         }
+        cloud_session.set_session(local["user"]["id"], user["id"], result["access_token"],
+                                  result.get("refresh_token", ""))
         CLOUD_LOGINS[state] = {"status": "done", "user": local["user"], "token": local["token"]}
         self._html_page("Готово", "Вход выполнен. Вернитесь в BeamHub — аккаунт уже активен.")
 
