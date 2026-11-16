@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 os.environ["BEAMHUB_DB"] = str(Path(tempfile.mkdtemp(prefix="beamhub-cloud-")) / "cloud.db")
 
-from core import accounts, cloud, db  # noqa: E402
+from core import accounts, cloud, cloud_email, db  # noqa: E402
 
 failures: list[str] = []
 
@@ -63,6 +63,28 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json(200, {"access_token": "at-1", "refresh_token": "rt-1",
                              "expires_in": 3600, "user": USER})
+            return
+        if parsed.path == "/auth/v1/signup":
+            email = (body.get("email") or "").strip().lower()
+            if email == "taken@example.com":
+                self._json(422, {"msg": "User already registered"})
+                return
+            if email == "unconfirmed@example.com":
+                self._json(200, {"id": "new-user", "email": email})
+                return
+            self._json(200, {"access_token": "at-email", "refresh_token": "rt-email",
+                             "expires_in": 3600,
+                             "user": {"id": "email-user", "email": email,
+                                      "user_metadata": {"full_name": email.split("@")[0]}}})
+            return
+        if parsed.path == "/auth/v1/token" and "grant_type=password" in parsed.query:
+            if body.get("password") == "supersecret9":
+                self._json(200, {"access_token": "at-email", "refresh_token": "rt-email",
+                                 "user": {"id": "email-user",
+                                          "email": (body.get("email") or "").lower()}})
+                return
+            self._json(400, {"error": "invalid_grant",
+                             "error_description": "Неверный email или пароль."})
             return
         if parsed.path == "/auth/v1/token" and "grant_type=refresh_token" in parsed.query:
             if body.get("refresh_token") != "rt-1":
@@ -164,7 +186,33 @@ resource = store._items["st-2"]
 resource["created"] = time.time() - 3600
 check("просроченный state отклонён", store.pop("st-2") is None)
 
+print("[7] вход по email")
+check("плохой email отклонён", bool(cloud_email.validate("nope", "supersecret9")))
+check("короткий пароль отклонён", bool(cloud_email.validate("a@b.co", "123")))
+check("хорошие данные проходят", cloud_email.validate("a@b.co", "supersecret9") == "")
+check("ник из email", cloud_email.nickname_from_email("drift.king@example.com") == "drift king")
+
+fresh = cloud_email.signup(BASE, KEY, "new@example.com", "supersecret9")
+check("регистрация даёт сессию", fresh["ok"] and fresh["access_token"] == "at-email", str(fresh))
+confirm = cloud_email.signup(BASE, KEY, "unconfirmed@example.com", "supersecret9")
+check("неподтверждённая почта помечена", not confirm["ok"] and confirm.get("needs_confirm"),
+      str(confirm))
+taken = cloud_email.signup(BASE, KEY, "taken@example.com", "supersecret9")
+check("существующий email не создаётся заново", not taken["ok"] and taken.get("exists"),
+      str(taken))
+good = cloud_email.login(BASE, KEY, "new@example.com", "supersecret9")
+check("вход по паролю", good["ok"] and good["user"]["id"] == "email-user", str(good))
+bad = cloud_email.login(BASE, KEY, "new@example.com", "wrongpass1")
+check("неверный пароль отклонён", not bad["ok"] and "парол" in bad["error"].lower(), str(bad))
+
+local_email = accounts.upsert_provider_user("email", "email-user", "new@example.com",
+                                           cloud_email.nickname_from_email("new@example.com"))
+check("локальный аккаунт из email", local_email["ok"]
+      and local_email["user"]["provider"] == "email", str(local_email))
+
+
 server.shutdown()
+
 print()
 if failures:
     print("ПРОВАЛОВ:", len(failures))

@@ -1975,6 +1975,32 @@ class App:
         render()
 
     # ---------------------------------------------------------------- облако
+    def email_auth(self, mode: str) -> None:
+        email = (self._cloud_email_var.get() if hasattr(self, "_cloud_email_var") else "").strip()
+        password = (self._cloud_pass_var.get() if hasattr(self, "_cloud_pass_var") else "")
+        if not email or not password:
+            self.toast("Введите email и пароль", "error")
+            return
+        try:
+            result = self.api.post("/api/auth/email",
+                                   {"email": email, "password": password, "mode": mode})
+        except Exception as exc:  # noqa: BLE001
+            self.toast(f"Ошибка: {exc}", "error")
+            return
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не получилось войти"), "error")
+            return
+        self.api.user_token = result["token"]
+        self.user = result.get("user")
+        try:
+            self.api.post("/api/settings", {"user_token": result["token"]})
+        except Exception:  # noqa: BLE001
+            pass
+        self.toast(f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok")
+        self._apply_user()
+        self.refresh_all()
+        self.sync_pull()
+
     def google_login(self, window: tk.Misc | None = None) -> None:
         try:
             status = self.api.get("/api/auth/cloud")
@@ -2062,7 +2088,7 @@ class App:
     def cloud_block(self, frame: tk.Frame, settings: dict) -> None:
         block = tk.Frame(frame, bg=BG)
         block.pack(fill="x", pady=8)
-        tk.Label(block, text="Облако (Supabase) — вход через Google и общие сборки",
+        tk.Label(block, text="Облако (Supabase) — вход по email и общие сборки",
                  bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
         row = tk.Frame(block, bg=BG)
         row.pack(fill="x", pady=(4, 0))
@@ -2093,8 +2119,29 @@ class App:
 
         theme.RoundButton(buttons, "Сохранить облако", save_cloud, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left")
-        theme.RoundButton(buttons, "Войти через Google", self.google_login, variant="primary",
-                          height=30, radius=8, font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+        mail_row = tk.Frame(block, bg=BG)
+        mail_row.pack(fill="x", pady=(6, 0))
+        tk.Label(mail_row, text="email", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        self._cloud_email_var = tk.StringVar()
+        tk.Entry(mail_row, textvariable=self._cloud_email_var, bg=PANEL, fg=TEXT,
+                 relief="flat", insertbackground=TEXT, font=(FONT, 9)).pack(
+            side="left", fill="x", expand=True, padx=8, ipady=3)
+        pass_row = tk.Frame(block, bg=BG)
+        pass_row.pack(fill="x", pady=(4, 0))
+        tk.Label(pass_row, text="пароль", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        self._cloud_pass_var = tk.StringVar()
+        tk.Entry(pass_row, textvariable=self._cloud_pass_var, bg=PANEL, fg=TEXT, relief="flat",
+                 insertbackground=TEXT, font=(FONT, 9), show="•").pack(
+            side="left", fill="x", expand=True, padx=8, ipady=3)
+        mail_buttons = tk.Frame(block, bg=BG)
+        mail_buttons.pack(fill="x", pady=(6, 0))
+        theme.RoundButton(mail_buttons, "Войти по email", lambda: self.email_auth("login"),
+                          variant="primary", height=30, radius=8,
+                          font=(FONT_BOLD, 9)).pack(side="left")
+        theme.RoundButton(mail_buttons, "Создать аккаунт", lambda: self.email_auth("signup"),
+                          height=30, radius=8, font=(FONT, 9)).pack(side="left", padx=8)
+        theme.RoundButton(buttons, "Войти через Google", self.google_login, height=30,
+                          radius=8, font=(FONT, 9)).pack(side="left", padx=8)
         theme.RoundButton(buttons, "Мои сборки в облако", self.sync_push, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left", padx=(0, 8))
         theme.RoundButton(buttons, "Загрузить из облака", self.sync_pull, height=30, radius=8,

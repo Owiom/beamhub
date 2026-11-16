@@ -54,10 +54,10 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, cloud, cloud_moderation, cloud_session, cloud_social,
-                      cloud_sync, collections, compat, config, db, enrich, feedback,
-                      installer, matcher, moderation, recommend, security, social,
-                      updater)  # noqa: E402
+    from core import (accounts, cloud, cloud_email, cloud_moderation, cloud_session,
+                      cloud_social, cloud_sync, collections, compat, config, db, enrich,
+                      feedback, installer, matcher, moderation, recommend, security,
+                      social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -854,6 +854,37 @@ class Handler(BaseHTTPRequestHandler):
                 result["reports"] = mod_result.get("reports", 0)
                 result["actions"] = mod_result.get("actions", 0)
             self._json(result)
+            return True
+        if path == "/api/auth/email":
+            if not cloud.configured():
+                self._json({"ok": False,
+                            "error": "Сначала укажите адрес Supabase и anon key в настройках."})
+                return True
+            email = (body.get("email") or "").strip()
+            password = body.get("password") or ""
+            mode = body.get("mode") or "login"
+            problem = cloud_email.validate(email, password)
+            if problem:
+                self._json({"ok": False, "error": problem})
+                return True
+            base, key = cloud.settings()
+            result = (cloud_email.signup(base, key, email, password) if mode == "signup"
+                      else cloud_email.login(base, key, email, password))
+            if not result.get("ok"):
+                self._json(result)
+                return True
+            user = result.get("user") or {}
+            cloud_id = user.get("id") or email.lower()
+            local = accounts.upsert_provider_user("email", cloud_id, email,
+                                                  cloud_email.nickname_from_email(email))
+            if not local.get("ok"):
+                self._json({"ok": False, "error": "Не удалось создать локальный аккаунт."})
+                return True
+            cloud_session.set_session(local["user"]["id"], cloud_id,
+                                      result["access_token"],
+                                      result.get("refresh_token", ""))
+            self._json({"ok": True, "token": local["token"], "user": local["user"],
+                        "mode": mode})
             return True
         if path == "/api/cloud/settings":
             url = (body.get("url") or "").strip().rstrip("/")

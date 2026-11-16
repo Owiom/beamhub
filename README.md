@@ -82,15 +82,17 @@
 - счётчик лимитов: не больше 12 комментариев за 10 минут и 30 оценок в час с одного аккаунта;
 - сводка: средняя оценка, число оценок, сколько отзывов от установивших.
 
-## Вход через Google (Supabase)
+## Облако и аккаунты (Supabase)
 
-Пошагово — в [supabase/README.md](supabase/README.md). Коротко:
+Google Cloud не нужен — вход по email и паролю. Пошагово — в [supabase/README.md](supabase/README.md):
 
 1. создать бесплатный проект Supabase и выполнить [`supabase/schema.sql`](supabase/schema.sql);
-2. включить провайдер Google (Client ID/Secret из Google Cloud Console);
-3. добавить адрес возврата `http://127.0.0.1:8787/api/auth/callback`;
-4. в BeamHub: **Настройки → «Облако (Supabase)»** → Project URL и anon key → «Сохранить облако»;
-5. «Войти через Google» — откроется браузер, после входа страница «Готово» и профиль в приложении.
+2. **Authentication → Sign In / Providers → Email** → выключить **Confirm email**;
+3. **Project Settings → API** → скопировать **Project URL** и **anon public**;
+4. в BeamHub: **Настройки → «Облако (Supabase)»** → вставить URL и anon key → «Сохранить облако»;
+5. ввести email и пароль → «Создать аккаунт» (в следующий раз — «Войти по email»).
+
+Вход через Google — необязательное дополнение; его настройка описана в том же файле.
 
 Без облака всё продолжает работать: аккаунты и сборки хранятся локально.
 Локальный вход по email/паролю остаётся запасным вариантом.
