@@ -35,12 +35,12 @@ https://github.com/ВАШ_НИК/beamhub.git
 cd beamhub
 git init
 git add -A
-git commit -m "BeamHub 0.7.1"
+git commit -m "BeamHub: первый публичный релиз"
 git branch -M main
 git remote add origin https://github.com/ВАШ_НИК/beamhub.git
 git push -u origin main
-git tag v0.7.1
-git push origin v0.7.1
+git tag v<версия>
+git push origin v<версия>
 ```
 
 ## Что попадёт в репозиторий
