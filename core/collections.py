@@ -318,3 +318,35 @@ def stats() -> dict:
     return {"users": users, "collections": published, "installs": installs,
             "comments": comments, "ratings": ratings, "top_mods": top_mods,
             "top_collections": top_collections, "activity": days}
+
+def stats_public() -> dict:
+    """Открытая статистика сообщества: без личных данных и почты."""
+    from . import recommend
+
+    users = db.query_one("SELECT COUNT(*) AS c FROM users")["c"]
+    published = db.query_one("SELECT COUNT(*) AS c FROM collections WHERE published=1")["c"]
+    installs = db.query_one("SELECT COALESCE(SUM(installs),0) AS s FROM collections")["s"]
+    views = db.query_one("SELECT COALESCE(SUM(views),0) AS s FROM collections")["s"]
+    comments = db.query_one("SELECT COUNT(*) AS c FROM comments WHERE deleted=0")["c"]
+    ratings = db.query_one("SELECT COUNT(*) AS c FROM ratings")["c"]
+    reviews = db.query_one("SELECT COUNT(*) AS c FROM ratings WHERE review <> ''")["c"]
+    top_mods = db.query(
+        "SELECT m.id, m.title, m.image, m.category, COALESCE(s.installs,0) AS installs, "
+        "COALESCE(s.downloads,0) AS downloads, COALESCE(s.views,0) AS views FROM mods m "
+        "JOIN mod_stats s ON s.mod_id = m.id "
+        "ORDER BY (s.installs*3 + s.downloads + s.views) DESC LIMIT 10")
+    top_collections = db.query(
+        "SELECT c.id, c.title, c.cover, c.category, c.installs, c.views, "
+        "(SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id=c.id) AS items_count "
+        "FROM collections c WHERE c.published=1 ORDER BY c.installs DESC, c.views DESC LIMIT 10")
+    activity = db.query(
+        "SELECT date(created_at,'unixepoch') AS day, kind, COUNT(*) AS events "
+        "FROM stats_events WHERE created_at > strftime('%s','now') - 14*86400 "
+        "GROUP BY day, kind ORDER BY day")
+    active_users = db.query_one(
+        "SELECT COUNT(*) AS c FROM users WHERE last_seen > strftime('%s','now') - 7*86400")["c"]
+    return {"users": users, "active_users_7d": active_users, "collections": published,
+            "installs": installs, "views": views, "comments": comments,
+            "ratings": ratings, "reviews": reviews, "top_mods": top_mods,
+            "top_collections": top_collections, "activity": activity,
+            "categories": recommend.popular_categories(10)["items"]}

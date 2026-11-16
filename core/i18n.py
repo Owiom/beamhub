@@ -218,6 +218,27 @@ EN: dict[str, str] = {
     "18+": "Adult",
     "Не по теме": "Off-topic",
     "Нарушение прав": "Copyright",
+    # статистика и совместимость
+    "Статистика сообщества": "Community stats",
+    "Популярные моды (по установкам)": "Popular mods (by installs)",
+    "Популярные сборки": "Popular collections",
+    "Популярные категории": "Popular categories",
+    "Активность за 14 дней": "Activity, last 14 days",
+    "Совместимость": "Compatibility",
+    "Похожие моды": "Similar mods",
+    "Рекомендуемые": "Recommended",
+    "Конфликтов с установленными модами не найдено": "No conflicts with installed mods",
+    "Пока нет событий.": "No events yet.",
+    "Опубликованных сборок пока нет.": "No published collections yet.",
+    # совместимость (динамические подписи)
+    "Файл:": "File:",
+    "Версия игры:": "Game version:",
+    "не указано": "not specified",
+    "не определено": "not detected",
+    "проверено BeamHub": "checked by BeamHub",
+    "заявлено автором": "declared by the author",
+    "Возможные конфликты:": "Possible conflicts:",
+    "Пока нет установок — статистика появится, когда моды начнут ставить через BeamHub.": "No installs yet — stats appear once mods are installed via BeamHub.",
 }
 
 # подстроки и шаблоны для динамических строк

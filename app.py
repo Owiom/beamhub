@@ -53,8 +53,8 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, collections, config, db, enrich, feedback, installer,
-                      matcher, moderation, security, social, updater)  # noqa: E402
+    from core import (accounts, collections, compat, config, db, enrich, feedback, installer,
+                      matcher, moderation, recommend, security, social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -739,6 +739,24 @@ class Handler(BaseHTTPRequestHandler):
             data = collections.plan(arg("id"), viewer["id"] if viewer else "")
             self._json(data if data.get("ok") else
                        {"ok": False, "error": data.get("error", "Не найдено")})
+            return True
+        if path == "/api/stats":
+            self._json({"ok": True, **collections.stats_public()})
+            return True
+        if path == "/api/recommend/mods":
+            mod_id = arg("id")
+            if mod_id:
+                self._json(recommend.similar_mods(mod_id, limit=min(24, int(arg("limit", "8") or 8))))
+            else:
+                viewer = self._current_user()
+                self._json(recommend.recommended_mods(viewer["id"] if viewer else "",
+                                                      limit=min(24, int(arg("limit", "12") or 12))))
+            return True
+        if path == "/api/recommend/collections":
+            self._json(recommend.recommended_collections(limit=min(24, int(arg("limit", "8") or 8))))
+            return True
+        if path == "/api/compat":
+            self._json(compat.report(arg("id"), force=arg("force") == "1"))
             return True
         if path == "/api/platform/stats":
             user = self._require_user()
