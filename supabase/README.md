@@ -72,9 +72,13 @@ RLS-политики из [`schema.sql`](schema.sql). **service_role** вшив�
 ## Вход через Discord (необязательно)
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**.
-2. Слева **OAuth2** → скопировать **Client ID** и **Client Secret**.
+2. Слева **OAuth2** → скопировать **Client ID** (это длинное число, например
+   `1234567890123456789`) и **Client Secret** (кнопка Reset Secret).
+   В поле Client ID нельзя вставлять название приложения — Discord ответит
+   «client_id не владелец snowflake».
 3. Там же **Redirects** → **Add Redirect** → `https://<project>.supabase.co/auth/v1/callback`
-   → **Save Changes**.
+   → **Save Changes**. Адрес должен совпадать символ в символ, иначе Discord покажет
+   страницу с JSON-ошибкой вместо входа.
 4. Supabase → **Authentication → Sign In / Providers → Discord** → включить,
    вставить Client ID и Secret → **Save**.
 5. Supabase → **Authentication → URL Configuration → Redirect URLs** → добавить

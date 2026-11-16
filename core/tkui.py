@@ -209,7 +209,7 @@ class App:
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left", padx=8)
         theme.RoundButton(top, "＋ Ссылка", self.on_add_link, height=32, font=(FONT, 9),
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left")
-        self.account_button = theme.RoundButton(top, "Войти", self.open_auth, height=32,
+        self.account_button = theme.RoundButton(top, "Войти", self.account_menu, height=32,
                                                 width=124, font=(FONT, 9), bg=PANEL, fg=TEXT,
                                                 hover=ACTIVE_BG, radius=8)
         self.account_button.pack(side="left", padx=(8, 0))
@@ -1216,6 +1216,60 @@ class App:
         if self.view in ("collections", "settings"):
             self.refresh_all()
 
+    def account_menu(self) -> None:
+        if not self.user:
+            self.open_auth()
+            return
+        menu = tk.Menu(self.root, tearoff=0, bg=PANEL, fg=TEXT, activebackground=ACCENT,
+                       activeforeground="#111318", bd=0)
+        nick = (self.user or {}).get("nickname") or "аккаунт"
+        menu.add_command(label=nick, state="disabled")
+        menu.add_separator()
+        menu.add_command(label="Мой профиль", command=self.my_profile)
+        menu.add_command(label="Мои сборки", command=self._menu_my_collections)
+        menu.add_command(label="Настройки", command=lambda: self.switch("settings"))
+        menu.add_separator()
+        menu.add_command(label="Выйти", command=self.logout)
+        try:
+            x = self.account_button.winfo_rootx()
+            y = self.account_button.winfo_rooty() + self.account_button.winfo_height()
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
+    def _menu_my_collections(self) -> None:
+        self.switch("collections")
+        self.set_coll_kind("mine")
+
+    def my_profile(self) -> None:
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("Мой профиль")
+        window.geometry("560x460")
+        window.transient(self.root)
+        try:
+            data = self.api.get("/api/user", id=(self.user or {}).get("id"))
+        except Exception as exc:  # noqa: BLE001
+            tk.Label(window, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(padx=20, pady=20)
+            return
+        user = data.get("user") or {}
+        tk.Label(window, text=user.get("nickname") or "", bg=BG, fg=TEXT,
+                 font=(FONT_BOLD, 16), anchor="w").pack(fill="x", padx=20, pady=(16, 2))
+        meta = " · ".join(filter(None, [
+            user.get("email"),
+            f"подписчиков {user.get('followers', 0)}",
+            f"подписок {user.get('following', 0)}",
+            f"сборок {user.get('collections', 0)}",
+        ]))
+        tk.Label(window, text=meta, bg=BG, fg=DIM, font=(FONT, 9), anchor="w",
+                 wraplength=520, justify="left").pack(fill="x", padx=20)
+        actions = tk.Frame(window, bg=BG)
+        actions.pack(fill="x", padx=20, pady=14)
+        theme.RoundButton(actions, "Мои сборки", self._menu_my_collections,
+                          variant="primary", height=32, radius=9,
+                          font=(FONT_BOLD, 9)).pack(side="left")
+        theme.RoundButton(actions, "Закрыть", window.destroy, height=32, radius=9,
+                          font=(FONT, 9)).pack(side="left", padx=8)
+
     def open_auth(self) -> None:
         if self.user:
             self.logout()
@@ -1386,6 +1440,9 @@ class App:
         tk.Label(frame, text=hint, bg=BG, fg=DIM, font=(FONT, 9), wraplength=780,
                  justify="left", anchor="w").pack(fill="x", pady=(0, 10))
 
+        if getattr(self, "_coll_form", None):
+            self._render_coll_form(frame)
+
         if self.coll_kind == "recommended":
             try:
                 raw = self.api.get("/api/recommend/collections", limit=40)
@@ -1449,45 +1506,58 @@ class App:
         if not self.user:
             self.open_auth()
             return
-        self.collection_edit(None)
+        self._coll_form = {"id": None, "data": {}}
+        if self.view == "collections":
+            self.render_collections()
+        else:
+            self.switch("collections")
 
-    def collection_edit(self, coll_id: str | None, collection: dict | None = None) -> None:
-        collection = collection or {}
-        window = tk.Toplevel(self.root, bg=BG)
-        window.title("Новая сборка" if not coll_id else "Редактирование сборки")
-        window.geometry("520x520")
-        window.transient(self.root)
+    def _inline_form(self, frame: tk.Frame, title: str) -> tk.Frame:
+        card = tk.Frame(frame, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+        card.pack(fill="x", pady=(0, 10))
+        tk.Label(card, text=title, bg=PANEL, fg=TEXT, font=(FONT_BOLD, 11),
+                 anchor="w").pack(fill="x", padx=14, pady=(10, 2))
+        return card
+
+    def _render_coll_form(self, frame: tk.Frame) -> None:
+        form = getattr(self, "_coll_form", None) or {}
+        coll_id = form.get("id")
+        collection = form.get("data") or {}
+        card = self._inline_form(frame, "Новая сборка" if not coll_id else "Редактирование сборки")
+        body = tk.Frame(card, bg=PANEL)
+        body.pack(fill="x", padx=14, pady=(0, 12))
 
         def field(label: str, value: str = "") -> tk.Entry:
-            tk.Label(window, text=label, bg=BG, fg=MUTED, font=(FONT, 9),
-                     anchor="w").pack(fill="x", padx=20, pady=(8, 0))
-            entry = tk.Entry(window, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+            tk.Label(body, text=label, bg=PANEL, fg=MUTED, font=(FONT, 9),
+                     anchor="w").pack(fill="x", pady=(6, 0))
+            entry = tk.Entry(body, bg=BG, fg=TEXT, relief="flat", insertbackground=TEXT,
                              font=(FONT, 10))
             entry.insert(0, value)
-            entry.pack(fill="x", padx=20, ipady=5)
+            entry.pack(fill="x", ipady=4)
             return entry
 
         title = field("Название", collection.get("title") or "")
-        tk.Label(window, text="Описание", bg=BG, fg=MUTED, font=(FONT, 9),
-                 anchor="w").pack(fill="x", padx=20, pady=(8, 0))
-        description = tk.Text(window, height=4, bg=PANEL, fg=TEXT, relief="flat",
+        tk.Label(body, text="Описание", bg=PANEL, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x", pady=(6, 0))
+        description = tk.Text(body, height=3, bg=BG, fg=TEXT, relief="flat",
                               insertbackground=TEXT, font=(FONT, 10), wrap="word")
         description.insert("1.0", collection.get("description") or "")
-        description.pack(fill="x", padx=20)
+        description.pack(fill="x")
 
-        tk.Label(window, text="Категория", bg=BG, fg=MUTED, font=(FONT, 9),
-                 anchor="w").pack(fill="x", padx=20, pady=(8, 0))
         labels = [label for _key, label in self.COLL_CATEGORIES]
         keys = [key for key, _label in self.COLL_CATEGORIES]
-        current = collection.get("category") or "other"
-        combo = ttk.Combobox(window, values=labels, state="readonly",
-                             font=(FONT, 10))
-        combo.set(self._category_label(current))
-        combo.pack(fill="x", padx=20, ipady=3)
-
+        tk.Label(body, text="Категория", bg=PANEL, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x", pady=(6, 0))
+        combo = ttk.Combobox(body, values=labels, state="readonly", font=(FONT, 9))
+        combo.set(self._category_label(collection.get("category") or "other"))
+        combo.pack(fill="x")
         tags = field("Теги через запятую", ", ".join(collection.get("tags") or []))
-        status = tk.Label(window, text="", bg=BG, fg="#ffb3b3", font=(FONT, 9), anchor="w")
-        status.pack(fill="x", padx=20, pady=(6, 0))
+        status = tk.Label(body, text="", bg=PANEL, fg="#ffb3b3", font=(FONT, 9), anchor="w")
+        status.pack(fill="x", pady=(4, 0))
+
+        def close() -> None:
+            self._coll_form = None
+            self.render_collections()
 
         def save() -> None:
             payload = {
@@ -1504,18 +1574,23 @@ class App:
             if not result.get("ok"):
                 status.configure(text=result.get("error", "Не получилось"))
                 return
-            window.destroy()
             self.toast("Сборка сохранена", "ok")
-            self.refresh_all()
+            close()
 
-        buttons = tk.Frame(window, bg=BG)
-        buttons.pack(fill="x", padx=20, pady=14)
-        theme.RoundButton(buttons, "Сохранить", save, variant="primary", height=32, radius=9,
+        actions = tk.Frame(body, bg=PANEL)
+        actions.pack(fill="x", pady=(8, 0))
+        theme.RoundButton(actions, "Сохранить", save, variant="primary", height=30, radius=8,
                           font=(FONT_BOLD, 9)).pack(side="left")
-        theme.RoundButton(buttons, "Отмена", window.destroy, height=32, radius=9,
+        theme.RoundButton(actions, "Отмена", close, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left", padx=8)
         title.focus_set()
-        self._translate_ui(window)
+
+    def collection_edit(self, coll_id: str | None, collection: dict | None = None) -> None:
+        self._coll_form = {"id": coll_id, "data": collection or {}}
+        if self.view == "collections":
+            self.render_collections()
+        else:
+            self.switch("collections")
 
     def collection_details(self, coll_id: str) -> None:
         try:
@@ -2329,28 +2404,46 @@ class App:
         except Exception as exc:  # noqa: BLE001
             self.toast(f"Ошибка: {exc}", "error")
             return
+        frame = getattr(self, "_cards_frame", None)
+        if frame is None:
+            self.toast("Сначала откройте каталог", "error")
+            return
+        for child in frame.winfo_children():
+            if getattr(child, "_is_add_bar", False):
+                child.destroy()
+        bar = tk.Frame(frame, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+        bar._is_add_bar = True  # type: ignore[attr-defined]
+        children = [child for child in frame.winfo_children() if child is not bar]
+        if children:
+            bar.pack(fill="x", pady=(0, 8), before=children[0])
+        else:
+            bar.pack(fill="x", pady=(0, 8))
+        tk.Label(bar, text=f"Добавить «{mod.get('title') or ''}» в сборку:",
+                 bg=PANEL, fg=TEXT, font=(FONT_BOLD, 9), anchor="w").pack(
+            fill="x", padx=12, pady=(8, 2))
+        row = tk.Frame(bar, bg=PANEL)
+        row.pack(fill="x", padx=12, pady=(0, 8))
         mine = data.get("items", [])
-        window = tk.Toplevel(self.root, bg=BG)
-        window.title("В какую сборку добавить?")
-        window.geometry("460x420")
-        window.transient(self.root)
-        tk.Label(window, text=mod.get("title") or "", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
-                 anchor="w", wraplength=420, justify="left").pack(fill="x", padx=16, pady=(14, 8))
-        for coll in mine:
-            line = tk.Frame(window, bg=PANEL)
-            line.pack(fill="x", padx=16, pady=2)
-            tk.Label(line, text=coll.get("title"), bg=PANEL, fg=TEXT, font=(FONT, 9),
-                     anchor="w").pack(side="left", fill="x", expand=True, padx=8, pady=6)
-            theme.RoundButton(line, "Добавить",
-                              lambda c=coll["id"]: self._add_to_collection(c, mod, window),
-                              variant="primary", height=28, radius=8,
-                              font=(FONT_BOLD, 8)).pack(side="right", padx=6)
-        theme.RoundButton(window, "＋ Новая сборка", lambda: (window.destroy(),
-                                                             self.create_collection()),
-                          height=30, radius=9, font=(FONT, 9)).pack(padx=16, pady=12)
-        self._translate_ui(window)
+        if not mine:
+            tk.Label(row, text="Сборок пока нет — создайте первую в разделе «Сборки».",
+                     bg=PANEL, fg=DIM, font=(FONT, 9), anchor="w").pack(side="left")
+        for coll in mine[:6]:
+            theme.RoundButton(row, coll.get("title") or "сборка",
+                              lambda c=coll["id"]: self._add_to_collection_inline(c, mod, bar),
+                              height=26, radius=8, font=(FONT, 8)).pack(side="left", padx=3)
+        theme.RoundButton(row, "Закрыть", bar.destroy, height=26, radius=8,
+                          font=(FONT, 8)).pack(side="right")
 
-    # ---------------------------------------------------------------- загрузки
+    def _add_to_collection_inline(self, coll_id: str, mod: dict, bar: tk.Frame) -> None:
+        result = self.api.post("/api/collections/items",
+                               {"id": coll_id, "mod_id": mod["id"], "action": "add"})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не получилось"), "error")
+            return
+        bar.destroy()
+        self.toast("Мод добавлен в сборку", "ok")
+        self.refresh_all()
+
     def render_inbox(self) -> None:
         frame = self._scrollable_frame()
         self.count_label.configure(text="")
