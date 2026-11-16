@@ -119,6 +119,15 @@ class Fake(BaseHTTPRequestHandler):
         if urllib.parse.urlsplit(self.path).path == "/auth/v1/user":
             self._send(200, USER)
             return
+        if urllib.parse.urlsplit(self.path).path == "/auth/v1/authorize":
+            self.send_response(302)
+            self.send_header(
+                "Location",
+                "https://accounts.google.com/o/oauth2/v2/auth"
+                "?client_id=123-abc.apps.googleusercontent.com")
+            self.send_header("content-length", "0")
+            self.end_headers()
+            return
         table = self._table()
         params = self._params()
         rows = list(STORE.get(table, []))
