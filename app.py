@@ -54,7 +54,7 @@ def _startup_failure(details: str) -> None:
 
 try:
     from core import (accounts, collections, config, db, enrich, feedback, installer,
-                      matcher, security, social, updater)  # noqa: E402
+                      matcher, moderation, security, social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -696,6 +696,33 @@ class Handler(BaseHTTPRequestHandler):
                                          user_id=viewer["id"] if viewer else "")
             self._json(data)
             return True
+        if path == "/api/moderation/overview":
+            user = self._require_user()
+            if not user:
+                return True
+            if not accounts.is_moderator(user):
+                self._json({"ok": False, "error": "Нужны права модератора."}, status=403)
+                return True
+            self._json({"ok": True, **moderation.overview()})
+            return True
+        if path == "/api/moderation/reports":
+            user = self._require_user()
+            if not user:
+                return True
+            if not accounts.is_moderator(user):
+                self._json({"ok": False, "error": "Нужны права модератора."}, status=403)
+                return True
+            self._json(moderation.list_reports(arg("status", "open")))
+            return True
+        if path == "/api/moderation/log":
+            user = self._require_user()
+            if not user:
+                return True
+            if not accounts.is_moderator(user):
+                self._json({"ok": False, "error": "Нужны права модератора."}, status=403)
+                return True
+            self._json(moderation.log())
+            return True
         if path == "/api/comments":
             target_type = arg("target_type", "collection")
             self._json(social.comments(target_type, arg("target_id"),
@@ -756,6 +783,31 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(accounts.unfollow(user["id"], target))
             else:
                 self._json(accounts.follow(user["id"], target))
+            return True
+        if path == "/api/moderation/report":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(moderation.report(user["id"], body.get("target_type", ""),
+                                         body.get("target_id", ""),
+                                         body.get("reason", "other"),
+                                         body.get("details", "")))
+            return True
+        if path == "/api/moderation/resolve":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(moderation.resolve(user, body.get("id", ""),
+                                          body.get("action", "resolve"),
+                                          body.get("note", "")))
+            return True
+        if path == "/api/moderation/block":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(moderation.block_user(user, body.get("user_id", ""),
+                                             bool(body.get("blocked", True)),
+                                             body.get("reason", "")))
             return True
         if path == "/api/comments":
             user = self._require_user()

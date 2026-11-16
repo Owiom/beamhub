@@ -1350,6 +1350,11 @@ class App:
             "Установить сборку" + (f" ({missing_count})" if missing_count else ""),
             lambda: self.apply_collection(coll_id, window), variant="primary",
             height=32, radius=9, font=(FONT_BOLD, 9)).pack(side="left")
+        if not coll.get("is_owner"):
+            theme.RoundButton(actions, "Пожаловаться",
+                              lambda: self.report_dialog("collection", coll_id,
+                                                         coll.get("title") or ""),
+                              height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
         theme.RoundButton(actions, f"Отзывы ({coll.get('comments_count', 0)})",
                           lambda: self.collection_reviews(coll_id, coll.get("title") or ""),
                           height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
@@ -1645,6 +1650,156 @@ class App:
 
         render()
 
+    # ---------------------------------------------------------------- модерация
+    REPORT_REASONS = (("spam", "Спам"), ("abuse", "Оскорбления"), ("adult", "18+"),
+                      ("offtopic", "Не по теме"), ("copyright", "Нарушение прав"),
+                      ("other", "Другое"))
+
+    def is_moderator(self) -> bool:
+        return bool(self.user and self.user.get("role") in ("moderator", "admin"))
+
+    def report_dialog(self, target_type: str, target_id: str, title: str = "") -> None:
+        if not self.user:
+            self.open_auth()
+            return
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("Жалоба")
+        window.geometry("460x330")
+        window.transient(self.root)
+        tk.Label(window, text="На что жалуетесь?", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                 anchor="w").pack(fill="x", padx=18, pady=(14, 2))
+        if title:
+            tk.Label(window, text=title[:120], bg=BG, fg=DIM, font=(FONT, 9), anchor="w",
+                     wraplength=420, justify="left").pack(fill="x", padx=18)
+        labels = [label for _key, label in self.REPORT_REASONS]
+        keys = [key for key, _label in self.REPORT_REASONS]
+        combo = ttk.Combobox(window, values=labels, state="readonly", font=(FONT, 9))
+        combo.set(labels[0])
+        combo.pack(fill="x", padx=18, pady=(8, 4))
+        details = tk.Text(window, height=4, bg=PANEL, fg=TEXT, relief="flat",
+                          insertbackground=TEXT, font=(FONT, 9), wrap="word")
+        details.pack(fill="x", padx=18)
+        status = tk.Label(window, text="", bg=BG, fg="#ffb3b3", font=(FONT, 9), anchor="w")
+        status.pack(fill="x", padx=18, pady=(4, 0))
+
+        def send() -> None:
+            reason = keys[labels.index(combo.get())] if combo.get() in labels else "other"
+            result = self.api.post("/api/moderation/report", {
+                "target_type": target_type, "target_id": target_id, "reason": reason,
+                "details": details.get("1.0", "end").strip()})
+            if not result.get("ok"):
+                status.configure(text=result.get("error", "Не удалось отправить"))
+                return
+            window.destroy()
+            self.toast("Жалоба отправлена модераторам", "ok")
+
+        buttons = tk.Frame(window, bg=BG)
+        buttons.pack(fill="x", padx=18, pady=10)
+        theme.RoundButton(buttons, "Отправить", send, variant="primary", height=30, radius=8,
+                          font=(FONT_BOLD, 9)).pack(side="left")
+        theme.RoundButton(buttons, "Отмена", window.destroy, height=30, radius=8,
+                          font=(FONT, 9)).pack(side="left", padx=8)
+        self._translate_ui(window)
+
+    def moderation_panel(self) -> None:
+        if not self.is_moderator():
+            self.toast("Нужны права модератора", "error")
+            return
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("Модерация")
+        window.geometry("840x720")
+        window.transient(self.root)
+        body = tk.Frame(window, bg=BG)
+        body.pack(fill="both", expand=True)
+        canvas = tk.Canvas(body, bg=BG, highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        scroll.pack(side="right", fill="y")
+        canvas.configure(yscrollcommand=scroll.set)
+        inner = tk.Frame(canvas, bg=BG)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def resolve(report_id: str, action: str) -> None:
+            result = self.api.post("/api/moderation/resolve", {"id": report_id, "action": action})
+            if not result.get("ok"):
+                self.toast(result.get("error", "Не получилось"), "error")
+                return
+            self.toast("Жалоба обработана", "ok")
+            render()
+
+        def block(user_id: str) -> None:
+            result = self.api.post("/api/moderation/block",
+                                   {"user_id": user_id, "blocked": True,
+                                    "reason": "по жалобе"})
+            if not result.get("ok"):
+                self.toast(result.get("error", "Не получилось"), "error")
+                return
+            self.toast("Пользователь заблокирован", "ok")
+            render()
+
+        def render() -> None:
+            for child in inner.winfo_children():
+                child.destroy()
+            try:
+                overview = self.api.get("/api/moderation/overview")
+                reports = self.api.get("/api/moderation/reports", status="open")
+                log = self.api.get("/api/moderation/log")
+            except Exception as exc:  # noqa: BLE001
+                tk.Label(inner, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+                return
+            tk.Label(inner, text=f"Открытых жалоб: {overview.get('open_reports', 0)} · "
+                                 f"заблокировано: {overview.get('blocked_users', 0)} · "
+                                 f"модераторов: {overview.get('moderators', 0)} · "
+                                 f"действий за сутки: {overview.get('actions_24h', 0)}",
+                     bg=BG, fg=TEXT, font=(FONT_BOLD, 10), anchor="w").pack(
+                fill="x", padx=18, pady=(14, 8))
+
+            tk.Label(inner, text="Очередь жалоб", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                     anchor="w").pack(fill="x", padx=18)
+            if not reports.get("items"):
+                tk.Label(inner, text="Пусто — жалоб нет.", bg=BG, fg=DIM, font=(FONT, 9),
+                         anchor="w").pack(fill="x", padx=18, pady=4)
+            for report in reports.get("items", []):
+                card = tk.Frame(inner, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+                card.pack(fill="x", padx=18, pady=3)
+                top = tk.Frame(card, bg=PANEL)
+                top.pack(fill="x", padx=10, pady=(6, 0))
+                tk.Label(top, text=f"{report.get('target_type')} · {report.get('reason')}",
+                         bg=PANEL, fg="#ffc79b", font=(FONT_BOLD, 9)).pack(side="left")
+                tk.Label(top, text=f" · от {report.get('reporter_nickname') or '?'}", bg=PANEL,
+                         fg=DIM, font=(FONT, 8)).pack(side="left")
+                tk.Label(card, text=(report.get("preview") or "(без текста)")[:140], bg=PANEL,
+                         fg=TEXT, font=(FONT, 9), wraplength=760, justify="left", anchor="w",
+                         height=1).pack(fill="x", padx=10, pady=(2, 4))
+                target_user = report.get("target_user") or {}
+                tools = tk.Frame(card, bg=PANEL)
+                tools.pack(fill="x", padx=10, pady=(0, 6))
+                theme.RoundButton(
+                    tools, "Удалить и закрыть",
+                    lambda r=report: resolve(r["id"], "resolve_delete"),
+                    variant="primary", height=26, radius=8, font=(FONT, 8)).pack(side="left")
+                theme.RoundButton(tools, "Отклонить",
+                                  lambda r=report: resolve(r["id"], "reject"),
+                                  height=26, radius=8, font=(FONT, 8)).pack(side="left", padx=6)
+                if target_user.get("id") and not target_user.get("blocked"):
+                    theme.RoundButton(
+                        tools, f"Блокировать {target_user.get('nickname')}",
+                        lambda u=target_user["id"]: block(u),
+                        height=26, radius=8, font=(FONT, 8)).pack(side="left")
+
+            tk.Label(inner, text="Журнал действий", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                     anchor="w").pack(fill="x", padx=18, pady=(12, 2))
+            for entry in log.get("items", [])[:25]:
+                tk.Label(inner,
+                         text=f"{entry.get('actor_nickname') or '?'} · {entry.get('action')} · "
+                              f"{entry.get('target_type')} {entry.get('target_id')} · "
+                              f"{human_ago(entry.get('created_at'))}",
+                         bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", padx=18)
+            self._translate_ui(window)
+
+        render()
+
     def publish_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
         result = self.api.post("/api/collections/publish", {"id": coll_id})
         if not result.get("ok"):
@@ -1918,6 +2073,10 @@ class App:
                      bg=BG, fg=TEXT, font=(FONT, 9)).pack(side="left", padx=(0, 10))
             theme.RoundButton(acc_row, "Выйти", self.logout, height=30, radius=8,
                               font=(FONT, 9)).pack(side="left")
+            if self.is_moderator():
+                theme.RoundButton(acc_row, "Модерация", self.moderation_panel, variant="primary",
+                                  height=30, radius=8,
+                                  font=(FONT_BOLD, 9)).pack(side="left", padx=8)
         else:
             tk.Label(acc_row, text="Войдите, чтобы публиковать сборки и оценивать чужие",
                      bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=(0, 10))

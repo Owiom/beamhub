@@ -199,7 +199,25 @@ EN: dict[str, str] = {
     "комментариев": "comments",
     "Поставьте оценку от 1 до 5": "Pick a rating from 1 to 5",
     "Оценка сохранена": "Rating saved",
-    "Войдите, чтобы оценивать и комментировать": "Sign in to rate and comment"
+    "Войдите, чтобы оценивать и комментировать": "Sign in to rate and comment",
+    # модерация
+    "Модерация": "Moderation",
+    "Очередь жалоб": "Report queue",
+    "Журнал действий": "Action log",
+    "Пожаловаться": "Report",
+    "Удалить и закрыть": "Delete and close",
+    "Отклонить": "Reject",
+    "Блокировать": "Block",
+    "Жалоба": "Report",
+    "На что жалуетесь?": "What are you reporting?",
+    "Жалоба отправлена модераторам": "Report sent to moderators",
+    "Нужны права модератора": "Moderator rights required",
+    "Пусто — жалоб нет.": "Empty — no reports.",
+    "Спам": "Spam",
+    "Оскорбления": "Abuse",
+    "18+": "Adult",
+    "Не по теме": "Off-topic",
+    "Нарушение прав": "Copyright",
 }
 
 # подстроки и шаблоны для динамических строк
