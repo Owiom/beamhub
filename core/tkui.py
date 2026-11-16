@@ -10,6 +10,7 @@ import json
 import re
 import threading
 import tkinter as tk
+import urllib.error
 import urllib.parse
 import urllib.request
 from tkinter import messagebox, ttk
@@ -61,6 +62,7 @@ class Api:
 
     def __init__(self, base: str) -> None:
         self.base = base.rstrip("/")
+        self.user_token = ""
         try:
             from . import security
 
@@ -68,20 +70,38 @@ class Api:
         except Exception:  # noqa: BLE001
             self.token = ""
 
+    def _headers(self, extra: dict | None = None) -> dict:
+        headers = {"X-BeamHub-Token": self.token}
+        if self.user_token:
+            headers["X-BeamHub-User"] = self.user_token
+        if extra:
+            headers.update(extra)
+        return headers
+
     def get(self, path: str, **params) -> dict:
         url = self.base + path
         if params:
             url += "?" + urllib.parse.urlencode(params)
-        with urllib.request.urlopen(url, timeout=20) as resp:
+        request = urllib.request.Request(url, headers=self._headers())
+        with urllib.request.urlopen(request, timeout=20) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def post(self, path: str, payload: dict | None = None) -> dict:
         data = json.dumps(payload or {}).encode("utf-8")
         request = urllib.request.Request(
             self.base + path, data=data,
-            headers={"Content-Type": "application/json", "X-BeamHub-Token": self.token})
-        with urllib.request.urlopen(request, timeout=120) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            headers=self._headers({"Content-Type": "application/json"}))
+        try:
+            with urllib.request.urlopen(request, timeout=120) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                data = {"ok": False, "error": body[:200]}
+            data.setdefault("ok", False)
+            return data
 
     def image(self, url: str) -> bytes:
         target = f"{self.base}/api/img?u={urllib.parse.quote(url, safe='')}"
@@ -107,6 +127,8 @@ class App:
         self._search_job = None
         self._event_seq = 0
         self._cards_frame = None
+        self.user: dict | None = None
+        self.coll_kind = "popular"
 
         root.title("BeamHub — каталог модов BeamNG.drive")
         root.geometry("1360x860")
@@ -122,6 +144,7 @@ class App:
         self.poll_events()
         self.root.after(5000, lambda: self.check_updates(silent=True))
         self.root.after(1500, self._lang_tick)
+        threading.Thread(target=self._restore_session, daemon=True).start()
 
     # ---------------------------------------------------------------- стиль
     def _styles(self) -> None:
@@ -184,6 +207,10 @@ class App:
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left", padx=8)
         theme.RoundButton(top, "＋ Ссылка", self.on_add_link, height=32, font=(FONT, 9),
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left")
+        self.account_button = theme.RoundButton(top, "Войти", self.open_auth, height=32,
+                                                width=124, font=(FONT, 9), bg=PANEL, fg=TEXT,
+                                                hover=ACTIVE_BG, radius=8)
+        self.account_button.pack(side="left", padx=(8, 0))
         self.lang_button = theme.RoundButton(top, self._lang_label(), self.toggle_language,
                                              height=32, font=(FONT_BOLD, 9), width=54,
                                              bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8)
@@ -244,6 +271,7 @@ class App:
         self.status.grid(row=2, column=0, sticky="ew")
 
     NAV_ITEMS = (("catalog", "Каталог", "grid"),
+                 ("collections", "Сборки", "layers"),
                  ("library", "Библиотека", "book"),
                  ("updates", "Обновления", "arrow"),
                  ("inbox", "Загрузки", "tray"),
@@ -317,6 +345,10 @@ class App:
             canvas.create_line(4, 22, 4, 27, 18, 27, 18, 22, fill=color, width=2)
             canvas.create_line(11, 7, 11, 18, fill=color, width=2)
             canvas.create_line(6, 14, 11, 20, 16, 14, fill=color, width=2)
+        elif kind == "layers":
+            canvas.create_polygon(11, 6, 19, 11, 11, 16, 3, 11, fill="", outline=color, width=1)
+            canvas.create_line(3, 15, 11, 20, 19, 15, fill=color, width=1)
+            canvas.create_line(3, 19, 11, 24, 19, 19, fill=color, width=1)
         elif kind == "gear":
             canvas.create_oval(6, 12, 16, 22, outline=color, width=2)
             for coords in ((10, 5, 12, 9), (10, 25, 12, 29), (3, 16, 6, 18), (16, 16, 19, 18)):
@@ -549,11 +581,13 @@ class App:
     def switch(self, view: str) -> None:
         self.view = view
         self._set_active_nav(view)
-        titles = {"catalog": "Каталог модов", "library": "Библиотека",
+        titles = {"catalog": "Каталог модов", "collections": "Сборки", "library": "Библиотека",
                   "updates": "Обновления", "inbox": "Загрузки", "settings": "Настройки"}
         self.title_label.configure(text=titles[view])
         if view == "catalog":
             self.reload()
+        elif view == "collections":
+            self.render_collections()
         elif view == "library":
             self.render_library()
         elif view == "updates":
@@ -869,6 +903,9 @@ class App:
         buttons.pack(fill="x", padx=18, pady=(0, 16))
         theme.RoundButton(buttons, "Скачать", lambda: self.install(item), variant="primary",
                           height=34, radius=9, font=(FONT_BOLD, 10)).pack(side="left")
+        theme.RoundButton(buttons, "＋ В сборку", lambda: self.add_to_collection_from_catalog(item),
+                          height=34, radius=9, bg=PANEL, fg=TEXT, hover=ACTIVE_BG,
+                          font=(FONT, 10)).pack(side="left", padx=8)
         theme.RoundButton(buttons, "Открыть страницу", lambda: self._open_page(item),
                           height=34, radius=9, bg=PANEL, fg=TEXT, hover=ACTIVE_BG,
                           font=(FONT, 10)).pack(side="left", padx=8)
@@ -977,6 +1014,524 @@ class App:
         except Exception as exc:  # noqa: BLE001
             self.set_status(f"Ошибка: {exc}")
         self.render_library()
+
+    # ---------------------------------------------------------------- сборки
+    COLL_CATEGORIES = (("drift", "Drift"), ("offroad", "Offroad"), ("jdm", "JDM"),
+                       ("racing", "Racing"), ("realistic", "Realistic Driving"),
+                       ("tuning", "Tuning"), ("stunt", "Stunt"), ("city", "City"),
+                       ("mixed", "Mixed"), ("other", "Другое"))
+
+    def _category_label(self, key: str) -> str:
+        return dict(self.COLL_CATEGORIES).get(key, key or "other")
+
+    def _restore_session(self) -> None:
+        """Поднять сохранённую сессию: токен лежит в локальных настройках."""
+        try:
+            state = self.api.get("/api/state")
+            token = (state.get("settings") or {}).get("user_token") or ""
+        except Exception:  # noqa: BLE001
+            token = ""
+        if not token:
+            self.root.after(0, self._apply_user)
+            return
+        self.api.user_token = token
+        self.load_user()
+
+    def load_user(self) -> None:
+        try:
+            data = self.api.get("/api/auth/me")
+            self.user = data.get("user") if data.get("ok") else None
+        except Exception:  # noqa: BLE001
+            self.user = None
+        self.root.after(0, self._apply_user)
+
+    def _apply_user(self) -> None:
+        nick = (self.user or {}).get("nickname") or "Войти"
+        try:
+            self.account_button.configure(text=nick)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            base = getattr(self, "_mods_text", "")
+            self.foot_label.configure(text=(f"{nick}\n" if self.user else "") + base)
+        except Exception:  # noqa: BLE001
+            pass
+        if self.view in ("collections", "settings"):
+            self.refresh_all()
+
+    def open_auth(self) -> None:
+        if self.user:
+            self.logout()
+            return
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("Аккаунт BeamHub")
+        window.geometry("420x330")
+        window.transient(self.root)
+
+        mode = {"value": "login"}
+
+        tk.Label(window, text="BeamHub", bg=BG, fg=ACCENT, font=(FONT_BOLD, 16),
+                 anchor="w").pack(fill="x", padx=20, pady=(16, 2))
+        subtitle = tk.Label(window, text="Войдите, чтобы публиковать сборки и ставить оценки",
+                            bg=BG, fg=DIM, font=(FONT, 9), anchor="w", wraplength=370,
+                            justify="left")
+        subtitle.pack(fill="x", padx=20, pady=(0, 10))
+
+        fields = tk.Frame(window, bg=BG)
+        fields.pack(fill="x", padx=20)
+
+        def field(label: str, show: bool = False) -> tk.Entry:
+            tk.Label(fields, text=label, bg=BG, fg=MUTED, font=(FONT, 9),
+                     anchor="w").pack(fill="x", pady=(6, 0))
+            entry = tk.Entry(fields, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+                             font=(FONT, 10), show=("•" if show else ""))
+            entry.pack(fill="x", ipady=5, pady=2)
+            return entry
+
+        email = field("Email")
+        password = field("Пароль", show=True)
+        nickname = field("Никнейм (для регистрации)")
+
+        status = tk.Label(window, text="", bg=BG, fg="#ffb3b3", font=(FONT, 9), anchor="w",
+                          wraplength=370, justify="left")
+        status.pack(fill="x", padx=20, pady=(6, 0))
+
+        def submit() -> None:
+            payload = {"email": email.get().strip(), "password": password.get()}
+            path = "/api/auth/login"
+            if mode["value"] == "register":
+                payload["nickname"] = nickname.get().strip()
+                path = "/api/auth/register"
+            result = self.api.post(path, payload)
+            if not result.get("ok"):
+                status.configure(text=result.get("error", "Не получилось"))
+                return
+            self.api.user_token = result.get("token", "")
+            self.user = result.get("user")
+            try:
+                self.api.post("/api/settings", {"user_token": self.api.user_token})
+            except Exception:  # noqa: BLE001
+                pass
+            window.destroy()
+            self.toast(f"Вы вошли как {self.user.get('nickname')}", "ok")
+            self._apply_user()
+            self.refresh_all()
+
+        def toggle_mode() -> None:
+            if mode["value"] == "login":
+                mode["value"] = "register"
+                title_button.configure(text="У меня уже есть аккаунт")
+                subtitle.configure(text="Регистрация: email, пароль и никнейм")
+                submit_button.configure(text="Зарегистрироваться")
+            else:
+                mode["value"] = "login"
+                title_button.configure(text="Создать аккаунт")
+                subtitle.configure(text="Войдите, чтобы публиковать сборки и ставить оценки")
+                submit_button.configure(text="Войти")
+
+        actions = tk.Frame(window, bg=BG)
+        actions.pack(fill="x", padx=20, pady=12)
+        submit_button = theme.RoundButton(actions, "Войти", submit, variant="primary",
+                                          height=34, radius=9, font=(FONT_BOLD, 10))
+        submit_button.pack(side="left")
+        title_button = theme.RoundButton(actions, "Создать аккаунт", toggle_mode, height=34,
+                                         radius=9, font=(FONT, 9))
+        title_button.pack(side="left", padx=8)
+        tk.Label(window, text="Аккаунт хранится локально в BeamHub; вход через Google — на подходе.",
+                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w", wraplength=370, justify="left"
+                 ).pack(fill="x", padx=20, pady=(0, 12))
+        email.focus_set()
+        self._translate_ui(window)
+
+    def logout(self) -> None:
+        try:
+            self.api.post("/api/auth/logout", {})
+        except Exception:  # noqa: BLE001
+            pass
+        self.api.user_token = ""
+        self.user = None
+        try:
+            self.api.post("/api/settings", {"user_token": ""})
+        except Exception:  # noqa: BLE001
+            pass
+        self.toast("Вы вышли из аккаунта")
+        self._apply_user()
+        self.refresh_all()
+
+    def set_coll_kind(self, kind: str) -> None:
+        self.coll_kind = kind
+        self.render_collections()
+
+    def render_collections(self) -> None:
+        frame = self._scrollable_frame()
+        self.count_label.configure(text="")
+        toolbar = tk.Frame(frame, bg=BG)
+        toolbar.pack(fill="x", pady=(0, 8))
+        for key, label in (("popular", "Популярные"), ("new", "Новинки"), ("mine", "Мои")):
+            if key == "mine" and not self.user:
+                continue
+            theme.RoundButton(toolbar, label, lambda k=key: self.set_coll_kind(k), height=28,
+                              radius=14, font=(FONT, 9),
+                              variant=("primary" if self.coll_kind == key else "ghost")
+                              ).pack(side="left", padx=(0, 6))
+        if self.user:
+            theme.RoundButton(toolbar, "＋ Создать сборку", self.create_collection,
+                              variant="primary", height=30, radius=9,
+                              font=(FONT_BOLD, 9)).pack(side="right")
+        else:
+            theme.RoundButton(toolbar, "Войти", self.open_auth, height=30, radius=9,
+                              font=(FONT, 9)).pack(side="right")
+        hint = ("Сборки — это подборки модов каталога: drift, offroad, JDM и другие. "
+                "Смотреть можно без входа, создавать и оценивать — после входа в аккаунт.")
+        tk.Label(frame, text=hint, bg=BG, fg=DIM, font=(FONT, 9), wraplength=780,
+                 justify="left", anchor="w").pack(fill="x", pady=(0, 10))
+
+        try:
+            data = self.api.get("/api/collections", kind=self.coll_kind, limit=40)
+        except Exception as exc:  # noqa: BLE001
+            tk.Label(frame, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+            return
+        items = data.get("items", [])
+        self.count_label.configure(text=f"{data.get('total', len(items))} сборок")
+        if not items:
+            text = ("У вас пока нет сборок — создайте первую." if self.coll_kind == "mine"
+                    else "Пока никто не опубликовал сборок. Будьте первым!")
+            tk.Label(frame, text=text, bg=BG, fg=MUTED, font=(FONT, 11)).pack(anchor="w", pady=20)
+            return
+        for coll in items:
+            self._collection_row(frame, coll)
+
+    def _collection_row(self, parent: tk.Frame, coll: dict) -> None:
+        row = tk.Frame(parent, bg=PANEL, highlightthickness=1, highlightbackground=LINE,
+                       cursor="hand2")
+        row.pack(fill="x", pady=4)
+        cover = tk.Label(row, text=(coll.get("title") or "?")[:2].upper(), bg="#241a10",
+                         fg=ACCENT, font=(FONT_BOLD, 16), width=6, height=3)
+        cover.pack(side="left", padx=(10, 12), pady=8)
+        info = tk.Frame(row, bg=PANEL)
+        info.pack(side="left", fill="x", expand=True, pady=8)
+        tk.Label(info, text=coll.get("title") or "Без названия", bg=PANEL, fg=TEXT,
+                 font=(FONT_BOLD, 11), anchor="w").pack(fill="x")
+        rating = coll.get("rating") or {}
+        meta = (f"{coll.get('owner_nickname') or 'автор'} · "
+                f"{self._category_label(coll.get('category'))} · "
+                f"{coll.get('items_count', 0)} модов · "
+                f"★ {rating.get('avg', 0):.1f} ({rating.get('count', 0)}) · "
+                f"{coll.get('installs', 0)} установок")
+        tk.Label(info, text=meta, bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+        tags = coll.get("tags") or []
+        if tags:
+            tk.Label(info, text=" · ".join("#" + t for t in tags[:6]), bg=PANEL, fg="#9fb4d8",
+                     font=(FONT, 8), anchor="w").pack(fill="x")
+        theme.RoundButton(row, "Открыть", lambda c=coll["id"]: self.collection_details(c),
+                          height=30, radius=8, font=(FONT, 9)).pack(side="right", padx=12)
+        for widget in (row, cover, info):
+            widget.bind("<Button-1>", lambda _e, c=coll["id"]: self.collection_details(c))
+
+    def create_collection(self) -> None:
+        if not self.user:
+            self.open_auth()
+            return
+        self.collection_edit(None)
+
+    def collection_edit(self, coll_id: str | None, collection: dict | None = None) -> None:
+        collection = collection or {}
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("Новая сборка" if not coll_id else "Редактирование сборки")
+        window.geometry("520x520")
+        window.transient(self.root)
+
+        def field(label: str, value: str = "") -> tk.Entry:
+            tk.Label(window, text=label, bg=BG, fg=MUTED, font=(FONT, 9),
+                     anchor="w").pack(fill="x", padx=20, pady=(8, 0))
+            entry = tk.Entry(window, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+                             font=(FONT, 10))
+            entry.insert(0, value)
+            entry.pack(fill="x", padx=20, ipady=5)
+            return entry
+
+        title = field("Название", collection.get("title") or "")
+        tk.Label(window, text="Описание", bg=BG, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x", padx=20, pady=(8, 0))
+        description = tk.Text(window, height=4, bg=PANEL, fg=TEXT, relief="flat",
+                              insertbackground=TEXT, font=(FONT, 10), wrap="word")
+        description.insert("1.0", collection.get("description") or "")
+        description.pack(fill="x", padx=20)
+
+        tk.Label(window, text="Категория", bg=BG, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x", padx=20, pady=(8, 0))
+        labels = [label for _key, label in self.COLL_CATEGORIES]
+        keys = [key for key, _label in self.COLL_CATEGORIES]
+        current = collection.get("category") or "other"
+        combo = ttk.Combobox(window, values=labels, state="readonly",
+                             font=(FONT, 10))
+        combo.set(self._category_label(current))
+        combo.pack(fill="x", padx=20, ipady=3)
+
+        tags = field("Теги через запятую", ", ".join(collection.get("tags") or []))
+        status = tk.Label(window, text="", bg=BG, fg="#ffb3b3", font=(FONT, 9), anchor="w")
+        status.pack(fill="x", padx=20, pady=(6, 0))
+
+        def save() -> None:
+            payload = {
+                "title": title.get().strip(),
+                "description": description.get("1.0", "end").strip(),
+                "category": keys[labels.index(combo.get())] if combo.get() in labels else "other",
+                "tags": tags.get(),
+            }
+            if coll_id:
+                payload["id"] = coll_id
+                result = self.api.post("/api/collections/update", payload)
+            else:
+                result = self.api.post("/api/collections/create", payload)
+            if not result.get("ok"):
+                status.configure(text=result.get("error", "Не получилось"))
+                return
+            window.destroy()
+            self.toast("Сборка сохранена", "ok")
+            self.refresh_all()
+
+        buttons = tk.Frame(window, bg=BG)
+        buttons.pack(fill="x", padx=20, pady=14)
+        theme.RoundButton(buttons, "Сохранить", save, variant="primary", height=32, radius=9,
+                          font=(FONT_BOLD, 9)).pack(side="left")
+        theme.RoundButton(buttons, "Отмена", window.destroy, height=32, radius=9,
+                          font=(FONT, 9)).pack(side="left", padx=8)
+        title.focus_set()
+        self._translate_ui(window)
+
+    def collection_details(self, coll_id: str) -> None:
+        try:
+            data = self.api.get("/api/collection", id=coll_id)
+        except Exception as exc:  # noqa: BLE001
+            self.toast(f"Не удалось открыть сборку: {exc}", "error")
+            return
+        if not data.get("ok"):
+            self.toast(data.get("error", "Сборка не найдена"), "error")
+            return
+        coll = data["collection"]
+        try:
+            plan = self.api.get("/api/collections/plan", id=coll_id)
+        except Exception:  # noqa: BLE001
+            plan = {"installed": [], "missing": [], "total": len(coll.get("items", []))}
+        installed = set(plan.get("installed") or [])
+        rating = coll.get("rating") or {}
+
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title(coll.get("title") or "Сборка")
+        window.geometry("780x680")
+        window.transient(self.root)
+
+        head = tk.Frame(window, bg=BG)
+        head.pack(fill="x", padx=20, pady=(16, 4))
+        tk.Label(head, text=coll.get("title"), bg=BG, fg=TEXT, font=(FONT_BOLD, 16),
+                 anchor="w").pack(fill="x")
+        owner = (coll.get("owner") or {}).get("nickname") or "автор"
+        tk.Label(head, text=f"{owner} · {self._category_label(coll.get('category'))} · "
+                            f"v{coll.get('version')} · ★ {rating.get('avg', 0):.1f} "
+                            f"({rating.get('count', 0)}) · {coll.get('views', 0)} просмотров · "
+                            f"{coll.get('installs', 0)} установок",
+                 bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
+        if coll.get("description"):
+            tk.Label(window, text=coll.get("description"), bg=BG, fg=MUTED, font=(FONT, 9),
+                     wraplength=730, justify="left", anchor="w").pack(fill="x", padx=20,
+                                                                     pady=(6, 0))
+        tags = coll.get("tags") or []
+        if tags:
+            tk.Label(window, text=" ".join("#" + t for t in tags), bg=BG, fg="#9fb4d8",
+                     font=(FONT, 9), anchor="w").pack(fill="x", padx=20, pady=(4, 0))
+
+        actions = tk.Frame(window, bg=BG)
+        actions.pack(fill="x", padx=20, pady=10)
+        missing_count = len(plan.get("missing") or [])
+        theme.RoundButton(
+            actions,
+            "Установить сборку" + (f" ({missing_count})" if missing_count else ""),
+            lambda: self.apply_collection(coll_id, window), variant="primary",
+            height=32, radius=9, font=(FONT_BOLD, 9)).pack(side="left")
+        if coll.get("is_owner"):
+            theme.RoundButton(actions, "＋ Добавить мод",
+                              lambda: self.pick_mod(coll_id, window), height=32, radius=9,
+                              font=(FONT, 9)).pack(side="left", padx=8)
+            theme.RoundButton(actions, "Редактировать",
+                              lambda: self.collection_edit(coll_id, coll), height=32, radius=9,
+                              font=(FONT, 9)).pack(side="left")
+            theme.RoundButton(
+                actions, "Опубликовать" if not coll.get("published") else "Обновить версию",
+                lambda: self.publish_collection(coll_id, window), height=32, radius=9,
+                font=(FONT, 9)).pack(side="left", padx=8)
+            theme.RoundButton(actions, "Удалить",
+                              lambda: self.delete_collection(coll_id, window), height=32,
+                              radius=9, font=(FONT, 9)).pack(side="right")
+
+        tk.Label(window, text=f"Состав: {len(coll.get('items', []))} модов · "
+                              f"установлено {len(installed)}",
+                 bg=BG, fg=TEXT, font=(FONT_BOLD, 10), anchor="w").pack(fill="x", padx=20,
+                                                                       pady=(4, 4))
+        body = tk.Frame(window, bg=BG)
+        body.pack(fill="both", expand=True, padx=20)
+        canvas = tk.Canvas(body, bg=BG, highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        scroll.pack(side="right", fill="y")
+        canvas.configure(yscrollcommand=scroll.set)
+        inner = tk.Frame(canvas, bg=BG)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        for index, item in enumerate(coll.get("items", []), start=1):
+            line = tk.Frame(inner, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            line.pack(fill="x", pady=3)
+            mark = "✓" if item["mod_id"] in installed else str(index)
+            tk.Label(line, text=mark, bg=("#16241a" if item["mod_id"] in installed else PANEL),
+                     fg=("#8fe0a4" if item["mod_id"] in installed else DIM),
+                     font=(FONT_BOLD, 10), width=3).pack(side="left", padx=6, pady=6)
+            info = tk.Frame(line, bg=PANEL)
+            info.pack(side="left", fill="x", expand=True, pady=6)
+            tk.Label(info, text=item.get("title") or item["mod_id"], bg=PANEL, fg=TEXT,
+                     font=(FONT, 10), anchor="w").pack(fill="x")
+            tk.Label(info, text=f"{item.get('category') or ''} · {item.get('size_text') or ''}",
+                     bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+            if coll.get("is_owner"):
+                theme.RoundButton(line, "Убрать",
+                                  lambda m=item["mod_id"]: self.remove_from_collection(coll_id, m,
+                                                                                       window),
+                                  height=28, radius=8, font=(FONT, 8)).pack(side="right", padx=8)
+
+        history = coll.get("versions") or []
+        if history:
+            tk.Label(window, text="История версий: " + ", ".join(
+                f"v{v['version']} ({v.get('count', 0)} модов)" for v in history[:6]),
+                bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", padx=20, pady=(6, 12))
+        self._translate_ui(window)
+
+    def publish_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
+        result = self.api.post("/api/collections/publish", {"id": coll_id})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось опубликовать"), "error")
+            return
+        version = (result.get("collection") or {}).get("version")
+        self.toast(f"Сборка опубликована, версия {version}", "ok")
+        if window is not None:
+            window.destroy()
+        self.render_collections()
+
+    def delete_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
+        if not messagebox.askyesno("BeamHub", "Удалить сборку? Это действие необратимо."):
+            return
+        result = self.api.post("/api/collections/delete", {"id": coll_id})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось удалить"), "error")
+            return
+        self.toast("Сборка удалена")
+        if window is not None:
+            window.destroy()
+        self.render_collections()
+
+    def remove_from_collection(self, coll_id: str, mod_id: str,
+                               window: tk.Misc | None = None) -> None:
+        result = self.api.post("/api/collections/items",
+                               {"id": coll_id, "mod_id": mod_id, "action": "remove"})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось убрать мод"), "error")
+            return
+        if window is not None:
+            window.destroy()
+        self.collection_details(coll_id)
+
+    def apply_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
+        result = self.api.post("/api/collections/apply", {"id": coll_id})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось начать установку"), "error")
+            return
+        self.toast(result.get("message", "Открыл мод"), "ok")
+        if window is not None:
+            window.destroy()
+        self.collection_details(coll_id)
+
+    def pick_mod(self, coll_id: str, window: tk.Misc | None = None) -> None:
+        picker = tk.Toplevel(self.root, bg=BG)
+        picker.title("Добавить мод в сборку")
+        picker.geometry("560x520")
+        picker.transient(self.root)
+        search = tk.Entry(picker, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
+                          font=(FONT, 10))
+        search.pack(fill="x", padx=16, pady=12, ipady=5)
+        results = tk.Frame(picker, bg=BG)
+        results.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        canvas = tk.Canvas(results, bg=BG, highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(results, orient="vertical", command=canvas.yview)
+        scroll.pack(side="right", fill="y")
+        canvas.configure(yscrollcommand=scroll.set)
+        inner = tk.Frame(canvas, bg=BG)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def search_now(*_args) -> None:
+            query = search.get().strip()
+            try:
+                data = self.api.get("/api/mods", q=query, limit=20)
+            except Exception as exc:  # noqa: BLE001
+                self.toast(f"Ошибка поиска: {exc}", "error")
+                return
+            for child in inner.winfo_children():
+                child.destroy()
+            for mod in data.get("items", []):
+                line = tk.Frame(inner, bg=PANEL)
+                line.pack(fill="x", pady=2)
+                tk.Label(line, text=mod.get("title") or mod["id"], bg=PANEL, fg=TEXT,
+                         font=(FONT, 9), anchor="w").pack(side="left", fill="x", expand=True,
+                                                          padx=8, pady=6)
+                theme.RoundButton(
+                    line, "Добавить",
+                    lambda m=mod: self._add_to_collection(coll_id, m, picker),
+                    variant="primary", height=28, radius=8, font=(FONT_BOLD, 8)
+                ).pack(side="right", padx=6)
+            self._translate_ui(inner)
+
+        search.bind("<Return>", search_now)
+        theme.RoundButton(picker, "Найти", search_now, variant="primary", height=30, radius=8,
+                          font=(FONT_BOLD, 9)).pack(padx=16, pady=(0, 10))
+        search_now()
+
+    def _add_to_collection(self, coll_id: str, mod: dict, window: tk.Misc | None = None) -> None:
+        result = self.api.post("/api/collections/items", {"id": coll_id, "mod_id": mod["id"]})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось добавить"), "error")
+            return
+        self.toast(f"Добавлено: {mod.get('title')}", "ok")
+        if window is not None:
+            window.destroy()
+
+    def add_to_collection_from_catalog(self, mod: dict) -> None:
+        if not self.user:
+            self.open_auth()
+            return
+        try:
+            data = self.api.get("/api/collections", kind="mine", limit=40)
+        except Exception as exc:  # noqa: BLE001
+            self.toast(f"Ошибка: {exc}", "error")
+            return
+        mine = data.get("items", [])
+        window = tk.Toplevel(self.root, bg=BG)
+        window.title("В какую сборку добавить?")
+        window.geometry("460x420")
+        window.transient(self.root)
+        tk.Label(window, text=mod.get("title") or "", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                 anchor="w", wraplength=420, justify="left").pack(fill="x", padx=16, pady=(14, 8))
+        for coll in mine:
+            line = tk.Frame(window, bg=PANEL)
+            line.pack(fill="x", padx=16, pady=2)
+            tk.Label(line, text=coll.get("title"), bg=PANEL, fg=TEXT, font=(FONT, 9),
+                     anchor="w").pack(side="left", fill="x", expand=True, padx=8, pady=6)
+            theme.RoundButton(line, "Добавить",
+                              lambda c=coll["id"]: self._add_to_collection(c, mod, window),
+                              variant="primary", height=28, radius=8,
+                              font=(FONT_BOLD, 8)).pack(side="right", padx=6)
+        theme.RoundButton(window, "＋ Новая сборка", lambda: (window.destroy(),
+                                                             self.create_collection()),
+                          height=30, radius=9, font=(FONT, 9)).pack(padx=16, pady=12)
+        self._translate_ui(window)
 
     # ---------------------------------------------------------------- загрузки
     def render_inbox(self) -> None:
@@ -1107,6 +1662,26 @@ class App:
                               height=30, radius=8, font=(FONT, 9),
                               variant=("primary" if i18n.current() == code else "ghost")
                               ).pack(side="left", padx=(0, 8))
+        acc_block = tk.Frame(frame, bg=BG)
+        acc_block.pack(fill="x", pady=8)
+        tk.Label(acc_block, text="Аккаунт", bg=BG, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x")
+        acc_row = tk.Frame(acc_block, bg=BG)
+        acc_row.pack(anchor="w", pady=4)
+        if self.user:
+            stats = (self.user or {}).get("stats") or {}
+            tk.Label(acc_row,
+                     text=f"{self.user.get('nickname')} · {self.user.get('role')} · "
+                          f"сборок {stats.get('collections', 0)} · "
+                          f"установок {stats.get('installs', 0)}",
+                     bg=BG, fg=TEXT, font=(FONT, 9)).pack(side="left", padx=(0, 10))
+            theme.RoundButton(acc_row, "Выйти", self.logout, height=30, radius=8,
+                              font=(FONT, 9)).pack(side="left")
+        else:
+            tk.Label(acc_row, text="Войдите, чтобы публиковать сборки и оценивать чужие",
+                     bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=(0, 10))
+            theme.RoundButton(acc_row, "Войти", self.open_auth, variant="primary", height=30,
+                              radius=8, font=(FONT, 9)).pack(side="left")
         buttons = tk.Frame(frame, bg=BG)
         buttons.pack(fill="x", pady=10)
         theme.RoundButton(buttons, "Сохранить", self.save_settings, variant="primary",
@@ -1444,7 +2019,8 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def _apply_meta(self, state: dict) -> None:
-        self.foot_label.configure(text=f"Папка модов:\n{state.get('settings', {}).get('mods_dir', '')}")
+        self._mods_text = f"Папка модов:\n{state.get('settings', {}).get('mods_dir', '')}"
+        self.foot_label.configure(text=self._mods_text)
         counts = state.get("counts", {})
         self.set_badge("catalog", counts.get("mods", 0))
         self.set_badge("library", counts.get("installed", 0))

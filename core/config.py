@@ -64,6 +64,8 @@ DEFAULTS = {
     # GitHub-репозиторий для обновлений: "владелец/репозиторий"
     "update_repo": "Owiom/beamhub",
     "auto_check_updates": True,
+    # токен сессии пользователя (локальный вход); пусто — не вошёл
+    "user_token": "",
 }
 
 _cached = None

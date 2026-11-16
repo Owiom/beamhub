@@ -56,6 +56,134 @@ CREATE TABLE IF NOT EXISTS favorites(mod_id TEXT PRIMARY KEY, added_at INTEGER D
 CREATE INDEX IF NOT EXISTS mods_cat ON mods(category);
 CREATE INDEX IF NOT EXISTS mods_published ON mods(published DESC);
 CREATE INDEX IF NOT EXISTS mods_title ON mods(title);
+
+-- ---------- платформа: аккаунты, сборки, общение, модерация ----------
+CREATE TABLE IF NOT EXISTS users(
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE,
+    nickname TEXT NOT NULL,
+    bio TEXT DEFAULT '',
+    avatar_color TEXT DEFAULT '#ff7a1a',
+    avatar_url TEXT DEFAULT '',
+    provider TEXT DEFAULT 'local',
+    provider_id TEXT DEFAULT '',
+    password_hash TEXT DEFAULT '',
+    password_salt TEXT DEFAULT '',
+    role TEXT DEFAULT 'user',
+    blocked INTEGER DEFAULT 0,
+    blocked_reason TEXT DEFAULT '',
+    created_at INTEGER DEFAULT 0,
+    last_seen INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sessions(
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at INTEGER DEFAULT 0,
+    last_seen INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS follows(
+    follower_id TEXT NOT NULL,
+    followee_id TEXT NOT NULL,
+    created_at INTEGER DEFAULT 0,
+    PRIMARY KEY(follower_id, followee_id)
+);
+CREATE TABLE IF NOT EXISTS collections(
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    cover TEXT DEFAULT '',
+    category TEXT DEFAULT 'other',
+    tags TEXT DEFAULT '[]',
+    published INTEGER DEFAULT 0,
+    game_version TEXT DEFAULT '',
+    version INTEGER DEFAULT 1,
+    views INTEGER DEFAULT 0,
+    installs INTEGER DEFAULT 0,
+    downloads INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT 0,
+    updated_at INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS collection_items(
+    collection_id TEXT NOT NULL,
+    mod_id TEXT NOT NULL,
+    position INTEGER DEFAULT 0,
+    note TEXT DEFAULT '',
+    added_at INTEGER DEFAULT 0,
+    PRIMARY KEY(collection_id, mod_id)
+);
+CREATE TABLE IF NOT EXISTS collection_versions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    snapshot TEXT DEFAULT '[]',
+    note TEXT DEFAULT '',
+    created_at INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS comments(
+    id TEXT PRIMARY KEY,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    parent_id TEXT DEFAULT '',
+    body TEXT NOT NULL,
+    created_at INTEGER DEFAULT 0,
+    updated_at INTEGER DEFAULT 0,
+    deleted INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS ratings(
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    stars INTEGER DEFAULT 0,
+    review TEXT DEFAULT '',
+    installed INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT 0,
+    updated_at INTEGER DEFAULT 0,
+    PRIMARY KEY(target_type, target_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS reports(
+    id TEXT PRIMARY KEY,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    reason TEXT DEFAULT '',
+    details TEXT DEFAULT '',
+    status TEXT DEFAULT 'open',
+    resolved_by TEXT DEFAULT '',
+    resolved_at INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS admin_actions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT DEFAULT '',
+    target_id TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    created_at INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS mod_stats(
+    mod_id TEXT PRIMARY KEY,
+    views INTEGER DEFAULT 0,
+    downloads INTEGER DEFAULT 0,
+    installs INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS stats_events(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    mod_id TEXT DEFAULT '',
+    collection_id TEXT DEFAULT '',
+    user_id TEXT DEFAULT '',
+    created_at INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS collections_owner ON collections(owner_id);
+CREATE INDEX IF NOT EXISTS collections_pub ON collections(published, created_at DESC);
+CREATE INDEX IF NOT EXISTS collection_items_coll ON collection_items(collection_id, position);
+CREATE INDEX IF NOT EXISTS comments_target ON comments(target_type, target_id, created_at);
+CREATE INDEX IF NOT EXISTS ratings_target ON ratings(target_type, target_id);
+CREATE INDEX IF NOT EXISTS reports_status ON reports(status, created_at);
+CREATE INDEX IF NOT EXISTS stats_kind ON stats_events(kind, created_at);
 """
 
 MOD_FIELDS = [
@@ -126,6 +254,23 @@ def set_meta(key: str, value: str) -> None:
         _db().execute("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
                       (key, value))
         _db().commit()
+
+
+# --- небольшие помощники для модулей платформы ---
+def execute(sql: str, params: tuple | list = ()) -> None:
+    with _lock:
+        _db().execute(sql, params)
+        _db().commit()
+
+
+def query(sql: str, params: tuple | list = ()) -> list[dict]:
+    with _lock:
+        return [dict(row) for row in _db().execute(sql, params).fetchall()]
+
+
+def query_one(sql: str, params: tuple | list = ()) -> dict | None:
+    rows = query(sql, params)
+    return rows[0] if rows else None
 
 
 def upsert_mod(mod: dict) -> None:

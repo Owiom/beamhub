@@ -53,7 +53,8 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import config, db, enrich, feedback, installer, matcher, security, updater  # noqa: E402
+    from core import (accounts, collections, config, db, enrich, feedback, installer,
+                      matcher, security, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -341,6 +342,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
+            if self._platform_get(path, query):
+                return
             if path == "/api/ping":
                 self._json({"app": "beamhub", "version": VERSION})
                 return
@@ -488,6 +491,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = self._body()
         try:
+            if self._platform_post(path, body):
+                return
             if path == "/api/quit":
                 self._json({"ok": True, "message": "BeamHub остановлен. Вкладку можно закрыть."})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -620,6 +625,198 @@ class Handler(BaseHTTPRequestHandler):
             self._error(str(exc), 500)
 
     # ---------- установка из каталога ----------
+    # ---------- платформа: аккаунты и сборки ----------
+    def _user_token(self) -> str:
+        return (self.headers.get("X-BeamHub-User") or "").strip()
+
+    def _current_user(self) -> dict | None:
+        try:
+            return accounts.user_by_token(self._user_token())
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _require_user(self) -> dict | None:
+        user = self._current_user()
+        if not user:
+            self._json({"ok": False, "error": "Нужно войти в аккаунт."}, status=401)
+        return user
+
+    def _platform_get(self, path: str, query: dict) -> bool:
+        def arg(name: str, default: str = "") -> str:
+            return (query.get(name) or [default])[0]
+
+        if path == "/api/auth/me":
+            user = self._current_user()
+            self._json({"ok": True, "user": accounts.profile(user["id"]) if user else None})
+            return True
+        if path == "/api/user":
+            user_id = arg("id")
+            data = accounts.profile(user_id)
+            if not data:
+                self._json({"ok": False, "error": "Пользователь не найден."}, status=404)
+                return True
+            viewer = self._current_user()
+            data["is_me"] = bool(viewer and viewer["id"] == user_id)
+            data["is_following"] = bool(viewer and accounts.is_following(viewer["id"], user_id))
+            data["collections"] = collections.list_collections(
+                "mine", viewer_id=user_id)["items"]
+            data["collections"] = [c for c in data["collections"] if c.get("published")]
+            self._json({"ok": True, "user": data})
+            return True
+        if path == "/api/collections":
+            kind = arg("kind", "popular")
+            if kind == "mine":
+                viewer = self._require_user()
+                if not viewer:
+                    return True
+                result = collections.list_collections(kind, viewer_id=viewer["id"],
+                                                      limit=min(60, int(arg("limit", "24") or 24)))
+                self._json(result)
+                return True
+            result = collections.list_collections(
+                kind=kind if kind in ("new", "popular", "rating") else "popular",
+                query=arg("q"), category=arg("cat"),
+                limit=min(60, int(arg("limit", "24") or 24)),
+                offset=int(arg("offset", "0") or 0))
+            self._json(result)
+            return True
+        if path == "/api/collection":
+            viewer = self._current_user()
+            coll_id = arg("id")
+            data = collections.get(coll_id, viewer["id"] if viewer else "")
+            if not data.get("ok"):
+                self._json({"ok": False, "error": data.get("error", "Не найдено")}, status=404)
+                return True
+            coll = data["collection"]
+            if coll["published"] and (not viewer or viewer["id"] != coll["owner_id"]):
+                collections.record_event("view", coll_id=coll_id,
+                                         user_id=viewer["id"] if viewer else "")
+            self._json(data)
+            return True
+        if path == "/api/collections/plan":
+            viewer = self._current_user()
+            data = collections.plan(arg("id"), viewer["id"] if viewer else "")
+            self._json(data if data.get("ok") else
+                       {"ok": False, "error": data.get("error", "Не найдено")})
+            return True
+        if path == "/api/platform/stats":
+            user = self._require_user()
+            if not user:
+                return True
+            if not accounts.is_moderator(user):
+                self._json({"ok": False, "error": "Нужны права модератора."}, status=403)
+                return True
+            self._json({"ok": True, **collections.stats()})
+            return True
+        return False
+
+    def _platform_post(self, path: str, body: dict) -> bool:
+        if path == "/api/auth/register":
+            result = accounts.register(body.get("email", ""), body.get("password", ""),
+                                       body.get("nickname", ""))
+            self._json(result if result.get("ok") else
+                       {"ok": False, "error": result.get("error")}, status=200)
+            return True
+        if path == "/api/auth/login":
+            result = accounts.login(body.get("email", ""), body.get("password", ""))
+            self._json(result if result.get("ok") else
+                       {"ok": False, "error": result.get("error")})
+            return True
+        if path == "/api/auth/logout":
+            accounts.logout(self._user_token())
+            self._json({"ok": True})
+            return True
+        if path == "/api/profile":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(accounts.update_profile(user["id"], **{
+                k: body[k] for k in ("nickname", "bio", "avatar_color") if k in body}))
+            return True
+        if path == "/api/follow":
+            user = self._require_user()
+            if not user:
+                return True
+            target = body.get("user_id", "")
+            if body.get("action") == "unfollow":
+                self._json(accounts.unfollow(user["id"], target))
+            else:
+                self._json(accounts.follow(user["id"], target))
+            return True
+        if path == "/api/collections/create":
+            user = self._require_user()
+            if not user:
+                return True
+            result = collections.create(user["id"], body.get("title", ""),
+                                        body.get("description", ""),
+                                        body.get("category", "other"),
+                                        body.get("tags", []), body.get("cover", ""),
+                                        body.get("game_version", ""))
+            self._json(result)
+            return True
+        if path == "/api/collections/update":
+            user = self._require_user()
+            if not user:
+                return True
+            allowed = ("title", "description", "cover", "category", "tags", "game_version")
+            fields = {k: body[k] for k in allowed if k in body}
+            self._json(collections.update(body.get("id", ""), user["id"], **fields))
+            return True
+        if path == "/api/collections/delete":
+            user = self._require_user()
+            if not user:
+                return True
+            self._json(collections.delete(body.get("id", ""), user["id"],
+                                          accounts.is_moderator(user)))
+            return True
+        if path == "/api/collections/items":
+            user = self._require_user()
+            if not user:
+                return True
+            coll_id = body.get("id", "")
+            if body.get("action") == "remove":
+                self._json(collections.remove_item(coll_id, user["id"], body.get("mod_id", "")))
+            else:
+                self._json(collections.add_item(coll_id, user["id"], body.get("mod_id", ""),
+                                                body.get("note", "")))
+            return True
+        if path == "/api/collections/publish":
+            user = self._require_user()
+            if not user:
+                return True
+            coll_id = body.get("id", "")
+            result = (collections.unpublish(coll_id, user["id"]) if body.get("action") == "unpublish"
+                      else collections.publish(coll_id, user["id"], body.get("note", "")))
+            self._json(result)
+            return True
+        if path == "/api/collections/apply":
+            user = self._current_user()
+            if not user:
+                self._json({"ok": False, "error": "Нужно войти в аккаунт."}, status=401)
+                return True
+            plan = collections.plan(body.get("id", ""), user["id"])
+            if not plan.get("ok"):
+                self._json(plan, status=404)
+                return True
+            nxt = plan.get("next")
+            if not nxt:
+                self._json({"ok": True, "done": True, "plan": plan,
+                            "message": "Вся сборка уже установлена."})
+                return True
+            mod = db.get_mod(nxt["mod_id"])
+            from core.providers import resolve_download
+
+            url = resolve_download(mod) if mod else ""
+            if url:
+                open_in_browser(url)
+            collections.record_event("download", coll_id=body.get("id", ""),
+                                     mod_id=nxt["mod_id"], user_id=user["id"])
+            self._json({"ok": True, "done": False, "plan": plan, "next": nxt,
+                        "message": f"Открыл страницу мода «{nxt.get('title')}». "
+                                   f"Дальше BeamHub поставит файл сам."})
+            return True
+        return False
+
     def _install(self, body: dict) -> None:
         mod = db.get_mod(body.get("id", ""))
         if not mod:
