@@ -65,11 +65,12 @@ create table if not exists public.collection_versions (
 );
 
 create table if not exists public.comments (
-    id uuid primary key default gen_random_uuid(),
+    -- id приходит из клиента (cmt_xxx), чтобы синхронизация не плодила копии
+    id text primary key,
     target_type text not null check (target_type in ('collection', 'mod')),
     target_id text not null,
     user_id uuid not null references auth.users (id) on delete cascade,
-    parent_id uuid references public.comments (id) on delete set null,
+    parent_id text references public.comments (id) on delete set null,
     body text not null check (char_length(body) between 1 and 1500),
     deleted boolean default false,
     created_at timestamptz default now(),

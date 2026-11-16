@@ -54,9 +54,9 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, cloud, cloud_session, cloud_sync, collections, compat, config,
-                      db, enrich, feedback, installer, matcher, moderation, recommend, security,
-                      social, updater)  # noqa: E402
+    from core import (accounts, cloud, cloud_session, cloud_social, cloud_sync, collections,
+                      compat, config, db, enrich, feedback, installer, matcher, moderation,
+                      recommend, security, social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -830,10 +830,22 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_user()
             if not user:
                 return True
-            self._json(cloud_sync.push())
+            result = cloud_sync.push()
+            if result.get("ok"):
+                social_result = cloud_social.push()
+                result["comments"] = social_result.get("comments", 0)
+                result["ratings"] = social_result.get("ratings", 0)
+                if not social_result.get("ok"):
+                    result.setdefault("errors", []).append(social_result.get("error", ""))
+            self._json(result)
             return True
         if path == "/api/sync/pull":
-            self._json(cloud_sync.pull())
+            result = cloud_sync.pull()
+            if result.get("ok"):
+                social_result = cloud_social.pull()
+                result["comments"] = social_result.get("comments", 0)
+                result["ratings"] = social_result.get("ratings", 0)
+            self._json(result)
             return True
         if path == "/api/cloud/settings":
             url = (body.get("url") or "").strip().rstrip("/")

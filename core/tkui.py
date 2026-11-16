@@ -2030,7 +2030,9 @@ class App:
                 message = result.get("error", "не вышло")
                 self.root.after(0, lambda m=message: self.toast(m, "error"))
                 return
-            text = f"Отправлено сборок: {result.get('pushed')} из {result.get('total')}"
+            text = (f"Отправлено сборок: {result.get('pushed')} из {result.get('total')} · "
+                    f"комментариев {result.get('comments', 0)}, "
+                    f"оценок {result.get('ratings', 0)}")
             if result.get("errors"):
                 text += " · часть не ушла"
             self.root.after(0, lambda t=text: self.toast(t, "ok"))
@@ -2048,8 +2050,10 @@ class App:
                 message = result.get("error", "не вышло")
                 self.root.after(0, lambda m=message: self.toast(m, "error"))
                 return
-            pulled = result.get("pulled", 0)
-            self.root.after(0, lambda n=pulled: self.toast(f"Получено сборок: {n}", "ok"))
+            message = (f"Получено сборок: {result.get('pulled', 0)} · "
+                       f"комментариев {result.get('comments', 0)}, "
+                       f"оценок {result.get('ratings', 0)}")
+            self.root.after(0, lambda m=message: self.toast(m, "ok"))
             self.root.after(0, self.refresh_all)
         threading.Thread(target=work, daemon=True).start()
 

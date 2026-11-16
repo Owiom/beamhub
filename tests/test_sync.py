@@ -18,7 +18,8 @@ sys.path.insert(0, str(ROOT))
 
 os.environ["BEAMHUB_DB"] = str(Path(tempfile.mkdtemp(prefix="beamhub-sync-")) / "sync.db")
 
-from core import accounts, cloud, cloud_session, cloud_sync, collections, db  # noqa: E402
+from core import (accounts, cloud, cloud_session, cloud_social, cloud_sync,  # noqa: E402
+                   collections, db, social)
 
 failures: list[str] = []
 
@@ -96,6 +97,19 @@ class FakePostgrest(BaseHTTPRequestHandler):
         if "id" in params and params["id"].startswith("eq."):
             value = params["id"][3:]
             rows = [row for row in rows if row.get("id") == value]
+        if "target_type" in params and params["target_type"].startswith("eq."):
+            value = params["target_type"][3:]
+            rows = [row for row in rows if row.get("target_type") == value]
+        if "target_id" in params:
+            cond = params["target_id"]
+            if cond.startswith("eq."):
+                rows = [row for row in rows if row.get("target_id") == cond[3:]]
+            elif cond.startswith("in.("):
+                ids = [part.strip().strip('"') for part in cond[4:-1].split(",")]
+                rows = [row for row in rows if row.get("target_id") in ids]
+        if "id" in params and params["id"].startswith("in.("):
+            ids = [part.strip().strip('"') for part in params["id"][4:-1].split(",")]
+            rows = [row for row in rows if row.get("id") in ids]
         if "collection_id" in params:
             cond = params["collection_id"]
             if cond.startswith("eq."):
@@ -187,6 +201,47 @@ check("просмотры обновились",
       db.query_one("SELECT views FROM collections WHERE id='col_remote_1'")["views"] == 15)
 check("локальная отправленная сборка не затёрта как remote",
       db.query_one("SELECT remote FROM collections WHERE id=?", (coll,))["remote"] == 0)
+
+
+print("[5] синхронизация отзывов")
+cloud_session.set_session(google_local, CLOUD_UID, "at-test", "rt-test")
+my_comment = social.add_comment(google_local, "collection", coll, "Моя сборка, мой отзыв")["id"]
+social.set_rating(google_local, "collection", coll, 5, "Пять звёзд из облака")
+pushed_social = cloud_social.push()
+check("отзывы отправлены", pushed_social["ok"] and pushed_social["comments"] == 1
+      and pushed_social["ratings"] == 1, str(pushed_social))
+cloud_comments = [row for row in STORE["comments"] if row.get("target_id") == coll]
+check("комментарий в облаке", len(cloud_comments) == 1, str(cloud_comments))
+check("автор комментария — облачный uid",
+      cloud_comments[0]["user_id"] == CLOUD_UID)
+cloud_ratings = [row for row in STORE["ratings"] if row.get("target_id") == coll]
+check("оценка в облаке", len(cloud_ratings) == 1)
+check("оценка с текстом", cloud_ratings[0]["review"] == "Пять звёзд из облака")
+
+STORE["comments"].append({
+    "id": "cmt_remote_1", "target_type": "collection", "target_id": "col_remote_1",
+    "user_id": "aaaa-bbbb", "parent_id": None, "body": "Чужой комментарий из облака",
+    "deleted": False, "created_at": 1,
+})
+STORE["ratings"].append({
+    "target_type": "collection", "target_id": "col_remote_1", "user_id": "aaaa-bbbb",
+    "stars": 4, "review": "Хорошая сборка", "installed": True, "created_at": 1,
+})
+pulled_social = cloud_social.pull()
+check("отзывы получены", pulled_social["ok"] and pulled_social["comments"] >= 1,
+      str(pulled_social))
+remote_comments = social.comments("collection", "col_remote_1")["items"]
+check("чужой комментарий сохранён", len(remote_comments) == 1)
+check("автор-заглушка подставлен", remote_comments[0]["author"]["nickname"] == "Remote Guru")
+check("оценка чужой сборки", social.rating_summary("collection", "col_remote_1")["count"] == 1)
+check("отметка установившего сохранена",
+      social.reviews("collection", "col_remote_1")["items"][0]["installed"])
+
+cloud_social.pull()
+check("повторный pull не дублирует комментарии",
+      len(db.query("SELECT * FROM comments WHERE target_id='col_remote_1'")) == 1)
+check("повторный pull не дублирует оценки",
+      len(db.query("SELECT * FROM ratings WHERE target_id='col_remote_1'")) == 1)
 
 print("[4] ошибки")
 cloud_session.clear()
