@@ -17,7 +17,7 @@ import urllib.request
 from tkinter import messagebox, ttk
 
 from . import cloud, cloud_defaults, i18n, theme
-from .util import human_ago
+from .util import human_ago, human_date
 
 BG = "#0d0e11"
 SOFT = "#12141a"
@@ -1244,7 +1244,7 @@ class App:
     def my_profile(self) -> None:
         window = tk.Toplevel(self.root, bg=BG)
         window.title("Мой профиль")
-        window.geometry("560x460")
+        window.geometry("620x560")
         window.transient(self.root)
         try:
             data = self.api.get("/api/user", id=(self.user or {}).get("id"))
@@ -1252,23 +1252,78 @@ class App:
             tk.Label(window, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(padx=20, pady=20)
             return
         user = data.get("user") or {}
-        tk.Label(window, text=user.get("nickname") or "", bg=BG, fg=TEXT,
-                 font=(FONT_BOLD, 16), anchor="w").pack(fill="x", padx=20, pady=(16, 2))
-        meta = " · ".join(filter(None, [
-            user.get("email"),
-            f"подписчиков {user.get('followers', 0)}",
-            f"подписок {user.get('following', 0)}",
-            f"сборок {user.get('collections', 0)}",
-        ]))
-        tk.Label(window, text=meta, bg=BG, fg=DIM, font=(FONT, 9), anchor="w",
-                 wraplength=520, justify="left").pack(fill="x", padx=20)
+        stats = user.get("stats") or {}
+        nick = user.get("nickname") or "профиль"
+
+        head = tk.Frame(window, bg=BG)
+        head.pack(fill="x", padx=20, pady=(18, 4))
+        badge = tk.Label(head, text=(nick[:1] or "?").upper(), bg=ACCENT, fg="#111318",
+                         font=(FONT_BOLD, 20), width=2, height=1)
+        badge.pack(side="left")
+        names = tk.Frame(head, bg=BG)
+        names.pack(side="left", padx=12)
+        tk.Label(names, text=nick, bg=BG, fg=TEXT, font=(FONT_BOLD, 16),
+                 anchor="w").pack(fill="x")
+        meta = " · ".join(filter(None, [user.get("email"),
+                                        f"с {human_date(user.get('created_at'))}"
+                                        if user.get("created_at") else ""]))
+        tk.Label(names, text=meta, bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
+
+        if user.get("bio"):
+            tk.Label(window, text=user["bio"], bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
+                     wraplength=560, justify="left").pack(fill="x", padx=20, pady=(6, 0))
+
+        cards = tk.Frame(window, bg=BG)
+        cards.pack(fill="x", padx=20, pady=(12, 4))
+        numbers = (
+            ("Сборки", stats.get("collections", 0)),
+            ("Подписчики", user.get("followers", 0)),
+            ("Подписки", user.get("following", 0)),
+            ("Просмотры", stats.get("views", 0)),
+            ("Установки", stats.get("installs", 0)),
+            ("Отзывы", stats.get("comments", 0)),
+            ("Оценки", stats.get("ratings", 0)),
+        )
+        for index, (label, value) in enumerate(numbers):
+            cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            cell.grid(row=0, column=index, sticky="nsew", padx=(0, 6))
+            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 14),
+                     anchor="w").pack(fill="x", padx=10, pady=(8, 0))
+            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 8),
+                     anchor="w").pack(fill="x", padx=10, pady=(0, 8))
+        for index in range(len(numbers)):
+            cards.grid_columnconfigure(index, weight=1)
+
+        tk.Label(window, text="Опубликованные сборки", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                 anchor="w").pack(fill="x", padx=20, pady=(12, 2))
+        collections_list = user.get("collections") or []
+        if not collections_list:
+            tk.Label(window, text="Пока пусто — создайте первую сборку.", bg=BG, fg=DIM,
+                     font=(FONT, 9), anchor="w").pack(fill="x", padx=20)
+        for row in collections_list[:6]:
+            line = tk.Frame(window, bg=BG)
+            line.pack(fill="x", padx=20, pady=2)
+            rating = row.get("rating") or {}
+            subtitle = (f"модов {row.get('items_count', 0)} · ★ {float(rating.get('avg') or 0):.1f}"
+                        f" ({rating.get('count', 0)}) · {row.get('installs', 0)} установок")
+            tk.Label(line, text=row.get("title") or "сборка", bg=BG, fg=TEXT, font=(FONT, 9),
+                     anchor="w").pack(side="left")
+            tk.Label(line, text=subtitle, bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(
+                side="left", padx=8)
+            theme.RoundButton(line, "Открыть",
+                              lambda c=row.get("id"): self.collection_details(c),
+                              height=24, radius=8, font=(FONT, 8)).pack(side="right")
+
         actions = tk.Frame(window, bg=BG)
-        actions.pack(fill="x", padx=20, pady=14)
+        actions.pack(fill="x", padx=20, pady=16)
         theme.RoundButton(actions, "Мои сборки", self._menu_my_collections,
                           variant="primary", height=32, radius=9,
                           font=(FONT_BOLD, 9)).pack(side="left")
+        theme.RoundButton(actions, "Настройки", lambda: self.switch("settings"),
+                          height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
         theme.RoundButton(actions, "Закрыть", window.destroy, height=32, radius=9,
-                          font=(FONT, 9)).pack(side="left", padx=8)
+                          font=(FONT, 9)).pack(side="left")
+        self._translate_ui(window)
 
     def open_auth(self) -> None:
         if self.user:

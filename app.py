@@ -666,9 +666,15 @@ class Handler(BaseHTTPRequestHandler):
             viewer = self._current_user()
             data["is_me"] = bool(viewer and viewer["id"] == user_id)
             data["is_following"] = bool(viewer and accounts.is_following(viewer["id"], user_id))
-            data["collections"] = collections.list_collections(
-                "mine", viewer_id=user_id)["items"]
-            data["collections"] = [c for c in data["collections"] if c.get("published")]
+            rows = collections.list_collections("mine", viewer_id=user_id)["items"]
+            rows = [c for c in rows if c.get("published")]
+            data["collections_count"] = len(rows)
+            data["collections"] = [{
+                "id": c.get("id"), "title": c.get("title"),
+                "category": c.get("category"), "items_count": c.get("items_count", 0),
+                "installs": c.get("installs", 0), "views": c.get("views", 0),
+                "rating": c.get("rating") or {"avg": 0, "count": 0},
+            } for c in rows[:12]]
             self._json({"ok": True, "user": data})
             return True
         if path == "/api/collections":

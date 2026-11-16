@@ -125,6 +125,8 @@ def profile(user_id: str) -> dict | None:
         return None
     data = _public(user)
     data["stats"] = collection_stats(user_id)
+    data["followers"] = followers_count(user_id)
+    data["following"] = following_count(user_id)
     return data
 
 
