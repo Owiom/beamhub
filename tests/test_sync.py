@@ -18,8 +18,8 @@ sys.path.insert(0, str(ROOT))
 
 os.environ["BEAMHUB_DB"] = str(Path(tempfile.mkdtemp(prefix="beamhub-sync-")) / "sync.db")
 
-from core import (accounts, cloud, cloud_session, cloud_social, cloud_sync,  # noqa: E402
-                   collections, db, social)
+from core import (accounts, cloud, cloud_moderation, cloud_session, cloud_social,
+                  cloud_sync, collections, db, moderation, social)
 
 failures: list[str] = []
 
@@ -32,7 +32,9 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         print(f"  FAIL {name} {detail}")
 
 
-STORE: dict[str, list[dict]] = {"collections": [], "collection_items": [], "profiles": []}
+STORE: dict[str, list[dict]] = {"collections": [], "collection_items": [], "profiles": [],
+                                "comments": [], "ratings": [], "reports": [],
+                                "admin_actions": []}
 
 
 class FakePostgrest(BaseHTTPRequestHandler):
@@ -88,6 +90,20 @@ class FakePostgrest(BaseHTTPRequestHandler):
             target[:] = [row for row in target if row.get("collection_id") != value]
         self._send(204)
 
+    def do_PATCH(self):  # noqa: N802
+        table = self._table()
+        length = int(self.headers.get("content-length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}")
+        params = self._params()
+        target = STORE.setdefault(table, [])
+        condition = params.get("id", "")
+        if condition.startswith("eq."):
+            value = condition[3:]
+            for row in target:
+                if row.get("id") == value:
+                    row.update(body)
+        self._send(204)
+
     def do_GET(self):  # noqa: N802
         table = self._table()
         params = self._params()
@@ -130,6 +146,7 @@ BASE = "http://127.0.0.1:8991"
 cloud.settings = lambda: (BASE, "anon-test")  # type: ignore[assignment]
 
 db.init()
+cloud_session.clear()  # сброс прошлых настроек облака
 CLOUD_UID = "99999999-8888-7777-6666-555555555555"
 
 print("[1] статус")
@@ -242,6 +259,57 @@ check("повторный pull не дублирует комментарии",
       len(db.query("SELECT * FROM comments WHERE target_id='col_remote_1'")) == 1)
 check("повторный pull не дублирует оценки",
       len(db.query("SELECT * FROM ratings WHERE target_id='col_remote_1'")) == 1)
+
+
+print("[6] синхронизация модерации")
+report_id = moderation.report(google_local, "collection", coll, "spam", "реклама в сборке")["id"]
+mod_user = db.query_one("SELECT * FROM users WHERE id=?", (google_local,))
+db.execute("UPDATE users SET role='moderator' WHERE id=?", (google_local,))
+mod_user = db.query_one("SELECT * FROM users WHERE id=?", (google_local,))
+pushed_mod = cloud_moderation.push(user=mod_user)
+check("жалоба ушла в облако", pushed_mod["ok"] and pushed_mod["reports"] >= 1,
+      str(pushed_mod))
+cloud_reports = [row for row in STORE["reports"] if row.get("id") == report_id]
+check("жалоба в облаке", len(cloud_reports) == 1, str(cloud_reports))
+check("автор жалобы — облачный uid",
+      cloud_reports and cloud_reports[0]["user_id"] == CLOUD_UID)
+
+db.execute("UPDATE reports SET status='resolved' WHERE id=?", (report_id,))
+resolution = cloud_moderation.push_resolution(report_id, "resolved", CLOUD_UID)
+check("решение отправлено", resolution.get("ok"), str(resolution))
+check("статус в облаке обновлён",
+      [row for row in STORE["reports"] if row["id"] == report_id][0]["status"] == "resolved")
+
+STORE["reports"].append({
+    "id": "rpt_remote_1", "target_type": "collection", "target_id": "col_remote_1",
+    "user_id": "aaaa-bbbb", "reason": "abuse", "details": "чужой жалоба",
+    "status": "open", "resolved_by": None, "resolved_at": 0, "created_at": 1,
+})
+STORE["admin_actions"].append({
+    "actor_id": "aaaa-bbbb", "action": "report_resolve", "target_type": "comment",
+    "target_id": "cmt_x", "note": "облачное действие", "created_at": 2,
+})
+pulled_mod = cloud_moderation.pull(user=mod_user)
+check("очередь забрана", pulled_mod["ok"] and pulled_mod["reports"] >= 1, str(pulled_mod))
+remote_report = db.query_one("SELECT * FROM reports WHERE id='rpt_remote_1'")
+check("чужая жалоба сохранена", remote_report is not None)
+reporter = db.query_one("SELECT nickname FROM users WHERE id=?", (remote_report["user_id"],))
+check("автор жалобы — заглушка с ником", reporter and reporter["nickname"] == "Remote Guru",
+      str(reporter))
+check("журнал забран", pulled_mod["actions"] >= 1, str(pulled_mod))
+check("действие модератора в локальном журнале",
+      db.query_one("SELECT id FROM admin_actions WHERE note='облачное действие'") is not None)
+
+cloud_moderation.pull(user=mod_user)
+check("повторный pull не дублирует жалобы",
+      len(db.query("SELECT * FROM reports WHERE id='rpt_remote_1'")) == 1)
+check("повторный pull не дублирует журнал",
+      len(db.query("SELECT * FROM admin_actions WHERE note='облачное действие'")) == 1)
+
+reader = accounts.register("reader@example.com", "supersecret9", "Reader")["user"]["id"]
+check("обычный пользователь не забирает очередь",
+      cloud_moderation.pull(user=db.query_one("SELECT * FROM users WHERE id=?", (reader,))
+                            ).get("reports", 0) == 0)
 
 print("[4] ошибки")
 cloud_session.clear()

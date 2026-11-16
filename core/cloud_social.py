@@ -27,7 +27,8 @@ def _stub_user(uid: str, nickname: str = "") -> str:
     name = (nickname or "пользователь облака")[:24]
     db.execute(
         "INSERT INTO users(id,nickname,provider,provider_id,role,created_at) "
-        "VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname",
+        "VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname "
+        "WHERE excluded.nickname <> 'пользователь облака' OR users.nickname = ''",
         (stub_id, name, "cloud", uid, "user", now_ts()))
     return stub_id
 

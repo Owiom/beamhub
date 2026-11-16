@@ -91,6 +91,9 @@ BASE = "http://127.0.0.1:8981"
 KEY = "anon-test-key"
 
 db.init()
+from core import config as _config  # noqa: E402
+_config.update({"cloud_url": "", "cloud_anon_key": "",
+                "cloud_uid": "", "cloud_refresh": ""})
 
 print("[1] настройка облака")
 check("по умолчанию облако не настроено", not cloud.configured())

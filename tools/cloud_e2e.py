@@ -147,6 +147,10 @@ def main() -> int:
         print("\nИТОГ: облачный вход работает на фейковом Supabase")
         return 0
     finally:
+        try:
+            api("/api/cloud/settings", {"url": "", "anon_key": ""}, local=local)
+        except Exception:  # noqa: BLE001
+            pass
         process.terminate()
         fake.shutdown()
 

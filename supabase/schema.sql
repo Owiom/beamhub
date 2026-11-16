@@ -90,7 +90,8 @@ create table if not exists public.ratings (
 );
 
 create table if not exists public.reports (
-    id uuid primary key default gen_random_uuid(),
+    -- id приходит из клиента (rpt_xxx) — синхронизация не плодит копии
+    id text primary key,
     target_type text not null,
     target_id text not null,
     user_id uuid not null references auth.users (id) on delete cascade,

@@ -54,9 +54,10 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, cloud, cloud_session, cloud_social, cloud_sync, collections,
-                      compat, config, db, enrich, feedback, installer, matcher, moderation,
-                      recommend, security, social, updater)  # noqa: E402
+    from core import (accounts, cloud, cloud_moderation, cloud_session, cloud_social,
+                      cloud_sync, collections, compat, config, db, enrich, feedback,
+                      installer, matcher, moderation, recommend, security, social,
+                      updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -837,6 +838,9 @@ class Handler(BaseHTTPRequestHandler):
                 result["ratings"] = social_result.get("ratings", 0)
                 if not social_result.get("ok"):
                     result.setdefault("errors", []).append(social_result.get("error", ""))
+                mod_result = cloud_moderation.push(user)
+                result["reports"] = mod_result.get("reports", 0)
+                result["actions"] = mod_result.get("actions", 0)
             self._json(result)
             return True
         if path == "/api/sync/pull":
@@ -845,6 +849,10 @@ class Handler(BaseHTTPRequestHandler):
                 social_result = cloud_social.pull()
                 result["comments"] = social_result.get("comments", 0)
                 result["ratings"] = social_result.get("ratings", 0)
+                viewer = self._current_user()
+                mod_result = cloud_moderation.pull(viewer)
+                result["reports"] = mod_result.get("reports", 0)
+                result["actions"] = mod_result.get("actions", 0)
             self._json(result)
             return True
         if path == "/api/cloud/settings":
@@ -886,9 +894,12 @@ class Handler(BaseHTTPRequestHandler):
             user = self._require_user()
             if not user:
                 return True
-            self._json(moderation.resolve(user, body.get("id", ""),
-                                          body.get("action", "resolve"),
-                                          body.get("note", "")))
+            answer = moderation.resolve(user, body.get("id", ""),
+                                        body.get("action", "resolve"),
+                                        body.get("note", ""))
+            if answer.get("ok"):
+                cloud_moderation.push_resolution(body.get("id", ""), answer.get("status", ""))
+            self._json(answer)
             return True
         if path == "/api/moderation/block":
             user = self._require_user()
