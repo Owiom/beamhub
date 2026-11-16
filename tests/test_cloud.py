@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+os.environ["BEAMHUB_NO_CLOUD_DEFAULTS"] = "1"
 os.environ["BEAMHUB_DB"] = str(Path(tempfile.mkdtemp(prefix="beamhub-cloud-")) / "cloud.db")
 
 from core import accounts, cloud, cloud_defaults, cloud_email, db  # noqa: E402

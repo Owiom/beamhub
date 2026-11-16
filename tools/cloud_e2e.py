@@ -22,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+os.environ["BEAMHUB_NO_CLOUD_DEFAULTS"] = "1"
 FAKE_PORT = 8985
 APP_PORT = 8987
 USER = {"id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "email": "cloud@example.com",

@@ -41,7 +41,7 @@ def push(token: str | None = None) -> dict:
         return {"ok": False, "error": "Нет токена облака — войдите заново."}
 
     local_user = db.query_one(
-        "SELECT id FROM users WHERE provider='google' AND provider_id=?", (uid,))
+        "SELECT id FROM users WHERE provider IN ('google','discord','email') AND provider_id=?", (uid,))
     if not local_user:
         return {"ok": False, "error": "Локальный аккаунт не связан с облаком."}
 

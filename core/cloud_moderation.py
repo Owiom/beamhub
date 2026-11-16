@@ -18,7 +18,9 @@ def _cloud_uid() -> str:
 
 
 def _local_user(uid: str) -> dict | None:
-    return db.query_one("SELECT * FROM users WHERE provider='google' AND provider_id=?", (uid,))
+    return db.query_one(
+        "SELECT * FROM users WHERE provider IN ('google', 'discord', 'email') "
+        "AND provider_id=?", (uid,))
 
 
 def _stub_user(uid: str, nickname: str = "") -> str:

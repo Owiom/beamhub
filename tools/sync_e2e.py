@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+os.environ["BEAMHUB_NO_CLOUD_DEFAULTS"] = "1"
 FAKE_PORT = 8993
 APP_PORT = 8995
 CLOUD_UID = "cccccccc-dddd-eeee-ffff-000000000000"

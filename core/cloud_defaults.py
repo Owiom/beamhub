@@ -31,6 +31,8 @@ def load() -> tuple[str, str]:
     key = (os.environ.get("BEAMHUB_CLOUD_ANON") or "").strip()
     if url and key:
         return url, key
+    if os.environ.get("BEAMHUB_NO_CLOUD_DEFAULTS") == "1":
+        return "", ""
     for root in _roots():
         candidate = root / FILE_NAME
         if not candidate.exists():
