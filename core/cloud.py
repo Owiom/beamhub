@@ -23,10 +23,16 @@ UA = f"BeamHub/{VERSION}"
 
 
 def settings() -> tuple[str, str]:
+    """Свои настройки важнее вшитых владельцем; вшитые — важнее пустых."""
+    from . import cloud_defaults
+
     cfg = config.load()
     url = (cfg.get("cloud_url") or "").strip().rstrip("/")
     key = (cfg.get("cloud_anon_key") or "").strip()
-    return url, key
+    if url and key:
+        return url, key
+    baked_url, baked_key = cloud_defaults.load()
+    return (baked_url, baked_key) if baked_url and baked_key else (url, key)
 
 
 def configured() -> bool:

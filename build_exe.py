@@ -98,11 +98,23 @@ def main() -> None:
     ensure_icon()
     exe = build(onefile=not args.onedir)
     if exe.exists():
+        _copy_cloud_defaults(exe.parent)
+    if exe.exists():
         size = exe.stat().st_size / 1024 ** 2
         print(f"\nГОТОВО: {exe}  ({size:.1f} МБ)")
     else:
         print(f"\nНе нашёл результат: {exe}")
         sys.exit(1)
+
+
+def _copy_cloud_defaults(out_dir: Path) -> None:
+    """Если владелец вшил ключи — кладём их рядом с exe, чтобы игроки не настраивали."""
+    source = ROOT / "cloud_defaults.json"
+    if not source.exists():
+        return
+    target = out_dir / "cloud_defaults.json"
+    shutil.copy2(source, target)
+    print(f"[beamhub] ключи облака вшиты: {target}")
 
 
 if __name__ == "__main__":

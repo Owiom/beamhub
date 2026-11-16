@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 os.environ["BEAMHUB_DB"] = str(Path(tempfile.mkdtemp(prefix="beamhub-cloud-")) / "cloud.db")
 
-from core import accounts, cloud, cloud_email, db  # noqa: E402
+from core import accounts, cloud, cloud_defaults, cloud_email, db  # noqa: E402
 
 failures: list[str] = []
 
@@ -212,6 +212,28 @@ check("локальный аккаунт из email", local_email["ok"]
 
 
 server.shutdown()
+
+
+print("[8] вшитые ключи владельца")
+os.environ["BEAMHUB_CLOUD_URL"] = "https://baked.supabase.co"
+os.environ["BEAMHUB_CLOUD_ANON"] = "baked-anon"
+check("вшитые ключи видны", cloud_defaults.baked())
+check("описание хоста", cloud_defaults.describe() == "baked.supabase.co", cloud_defaults.describe())
+cloud.settings = original_settings  # type: ignore[assignment]
+config_now = cloud.settings()
+check("вшитые ключи используются, когда своих нет",
+      config_now == ("https://baked.supabase.co", "baked-anon"), str(config_now))
+check("облако считается настроенным", cloud.configured())
+
+from core import config as _cfg  # noqa: E402
+
+_cfg.update({"cloud_url": "https://own.supabase.co", "cloud_anon_key": "own-anon"})
+check("свои ключи важнее вшитых",
+      cloud.settings() == ("https://own.supabase.co", "own-anon"), str(cloud.settings()))
+_cfg.update({"cloud_url": "", "cloud_anon_key": ""})
+os.environ.pop("BEAMHUB_CLOUD_URL", None)
+os.environ.pop("BEAMHUB_CLOUD_ANON", None)
+check("без ключей облако выключено", not cloud.configured())
 
 print()
 if failures:

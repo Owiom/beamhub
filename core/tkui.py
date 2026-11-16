@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 from tkinter import messagebox, ttk
 
-from . import i18n, theme
+from . import cloud, cloud_defaults, i18n, theme
 from .util import human_ago
 
 BG = "#0d0e11"
@@ -1222,7 +1222,7 @@ class App:
             return
         window = tk.Toplevel(self.root, bg=BG)
         window.title("Аккаунт BeamHub")
-        window.geometry("420x330")
+        window.geometry("420x310")
         window.transient(self.root)
 
         mode = {"value": "login"}
@@ -1238,11 +1238,13 @@ class App:
         fields.pack(fill="x", padx=20)
 
         def field(label: str, show: bool = False) -> tk.Entry:
-            tk.Label(fields, text=label, bg=BG, fg=MUTED, font=(FONT, 9),
-                     anchor="w").pack(fill="x", pady=(6, 0))
+            label_widget = tk.Label(fields, text=label, bg=BG, fg=MUTED, font=(FONT, 9),
+                                    anchor="w")
+            label_widget.pack(fill="x", pady=(6, 0))
             entry = tk.Entry(fields, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
                              font=(FONT, 10), show=("•" if show else ""))
             entry.pack(fill="x", ipady=5, pady=2)
+            entry._label = label_widget  # type: ignore[attr-defined]
             return entry
 
         email = field("Email")
@@ -1252,6 +1254,29 @@ class App:
         status = tk.Label(window, text="", bg=BG, fg="#ffb3b3", font=(FONT, 9), anchor="w",
                           wraplength=370, justify="left")
         status.pack(fill="x", padx=20, pady=(6, 0))
+        try:
+            cloud_ready = bool(self.api.get("/api/auth/cloud").get("configured"))
+        except Exception:  # noqa: BLE001
+            cloud_ready = False
+        if cloud_ready:
+            cloud_actions = tk.Frame(window, bg=BG)
+            cloud_actions.pack(fill="x", padx=20, pady=(8, 0))
+
+            def cloud_submit(kind: str) -> None:
+                result = self.cloud_auth(email.get().strip(), password.get(), kind)
+                if not result.get("ok"):
+                    status.configure(text=result.get("error", "Не получилось"))
+                    return
+                window.destroy()
+                self.toast(f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok")
+
+            theme.RoundButton(cloud_actions, "Войти по email", lambda: cloud_submit("login"),
+                              variant="primary", height=32, radius=9,
+                              font=(FONT_BOLD, 9)).pack(side="left")
+            theme.RoundButton(cloud_actions, "Создать аккаунт", lambda: cloud_submit("signup"),
+                              height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
+            tk.Label(cloud_actions, text="аккаунт BeamHub", bg=BG, fg=DIM,
+                     font=(FONT, 8)).pack(side="left")
 
         def submit() -> None:
             payload = {"email": email.get().strip(), "password": password.get()}
@@ -1294,7 +1319,23 @@ class App:
         title_button = theme.RoundButton(actions, "Создать аккаунт", toggle_mode, height=34,
                                          radius=9, font=(FONT, 9))
         title_button.pack(side="left", padx=8)
-        tk.Label(window, text="Аккаунт хранится локально в BeamHub; вход через Google — на подходе.",
+        if cloud_ready:
+            nickname._label.pack_forget()  # type: ignore[attr-defined]
+            nickname.pack_forget()
+            actions.pack_forget()
+            local_link = tk.Label(window, text="У меня локальный аккаунт без облака",
+                                  bg=BG, fg=MUTED, font=(FONT, 8, "underline"),
+                                  cursor="hand2", anchor="w")
+            local_link.pack(fill="x", padx=20, pady=(0, 8))
+
+            def show_local() -> None:
+                local_link.pack_forget()
+                cloud_actions.pack_forget()
+                actions.pack(fill="x", padx=20, pady=12)
+
+            local_link.bind("<Button-1>", lambda _e: show_local())
+        tk.Label(window, text="Облачный аккаунт: email и пароль. Локальный вход работает "
+                           "без облака и без интернета.",
                  bg=BG, fg=DIM, font=(FONT, 8), anchor="w", wraplength=370, justify="left"
                  ).pack(fill="x", padx=20, pady=(0, 12))
         email.focus_set()
@@ -1975,31 +2016,36 @@ class App:
         render()
 
     # ---------------------------------------------------------------- облако
-    def email_auth(self, mode: str) -> None:
-        email = (self._cloud_email_var.get() if hasattr(self, "_cloud_email_var") else "").strip()
-        password = (self._cloud_pass_var.get() if hasattr(self, "_cloud_pass_var") else "")
-        if not email or not password:
-            self.toast("Введите email и пароль", "error")
-            return
+    def cloud_auth(self, email: str, password: str, mode: str) -> dict:
         try:
             result = self.api.post("/api/auth/email",
                                    {"email": email, "password": password, "mode": mode})
         except Exception as exc:  # noqa: BLE001
-            self.toast(f"Ошибка: {exc}", "error")
-            return
+            return {"ok": False, "error": f"Ошибка: {exc}"}
         if not result.get("ok"):
-            self.toast(result.get("error", "Не получилось войти"), "error")
-            return
+            return result
         self.api.user_token = result["token"]
         self.user = result.get("user")
         try:
             self.api.post("/api/settings", {"user_token": result["token"]})
         except Exception:  # noqa: BLE001
             pass
-        self.toast(f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok")
         self._apply_user()
         self.refresh_all()
         self.sync_pull()
+        return result
+
+    def email_auth(self, mode: str) -> None:
+        email = (self._cloud_email_var.get() if hasattr(self, "_cloud_email_var") else "").strip()
+        password = (self._cloud_pass_var.get() if hasattr(self, "_cloud_pass_var") else "")
+        if not email or not password:
+            self.toast("Введите email и пароль", "error")
+            return
+        result = self.cloud_auth(email, password, mode)
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не получилось войти"), "error")
+            return
+        self.toast(f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok")
 
     def google_login(self, window: tk.Misc | None = None) -> None:
         try:
@@ -2090,6 +2136,15 @@ class App:
         block.pack(fill="x", pady=8)
         tk.Label(block, text="Облако (Supabase) — вход по email и общие сборки",
                  bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
+        baked = False
+        try:
+            baked = cloud_defaults.baked() and not (settings.get("cloud_url")
+                                                    and settings.get("cloud_anon_key"))
+        except Exception:  # noqa: BLE001
+            baked = False
+        if baked:
+            tk.Label(block, text=f"Облако подключено владельцем: {cloud_defaults.describe()}",
+                     bg=BG, fg="#8fe0a4", font=(FONT, 9), anchor="w").pack(fill="x", pady=(4, 2))
         row = tk.Frame(block, bg=BG)
         row.pack(fill="x", pady=(4, 0))
         tk.Label(row, text="Project URL", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
@@ -2097,6 +2152,8 @@ class App:
         url_entry = tk.Entry(row, textvariable=url_var, bg=PANEL, fg=TEXT, relief="flat",
                              insertbackground=TEXT, font=(FONT, 9))
         url_entry.pack(side="left", fill="x", expand=True, padx=8, ipady=3)
+        if baked:
+            row.pack_forget()
         row2 = tk.Frame(block, bg=BG)
         row2.pack(fill="x", pady=(4, 0))
         tk.Label(row2, text="anon key", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
@@ -2104,6 +2161,8 @@ class App:
         key_entry = tk.Entry(row2, textvariable=key_var, bg=PANEL, fg=TEXT, relief="flat",
                              insertbackground=TEXT, font=(FONT, 9), show="•")
         key_entry.pack(side="left", fill="x", expand=True, padx=8, ipady=3)
+        if baked:
+            row2.pack_forget()
         buttons = tk.Frame(block, bg=BG)
         buttons.pack(fill="x", pady=(6, 0))
 
@@ -2117,8 +2176,9 @@ class App:
                        else "Сохранено, но облако не настроено", "ok")
             self.refresh_all()
 
-        theme.RoundButton(buttons, "Сохранить облако", save_cloud, height=30, radius=8,
-                          font=(FONT, 9)).pack(side="left")
+        if not baked:
+            theme.RoundButton(buttons, "Сохранить облако", save_cloud, height=30, radius=8,
+                              font=(FONT, 9)).pack(side="left")
         mail_row = tk.Frame(block, bg=BG)
         mail_row.pack(fill="x", pady=(6, 0))
         tk.Label(mail_row, text="email", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
@@ -2146,8 +2206,7 @@ class App:
                           font=(FONT, 9)).pack(side="left", padx=(0, 8))
         theme.RoundButton(buttons, "Загрузить из облака", self.sync_pull, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left")
-        configured = bool((settings.get("cloud_url") or "").startswith("https://")
-                          and settings.get("cloud_anon_key"))
+        configured = cloud.configured()
         tk.Label(block,
                  text=("Подключено: сборки и профиль могут синхронизироваться" if configured
                        else "Не подключено — аккаунты и сборки пока локальные"),
