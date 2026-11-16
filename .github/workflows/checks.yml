@@ -38,6 +38,9 @@ jobs:
       - name: Тест синхронизации сборок
         run: python tests\test_sync.py
 
+      - name: Тест проверки провайдеров
+        run: python tests\test_provider.py
+
       - name: Сквозной вход через Google (фейковый Supabase)
         run: python tools\cloud_e2e.py
 

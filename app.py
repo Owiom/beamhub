@@ -54,10 +54,10 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, cloud, cloud_email, cloud_moderation, cloud_session,
-                      cloud_social, cloud_sync, collections, compat, config, db, enrich,
-                      feedback, installer, matcher, moderation, recommend, security,
-                      social, updater)  # noqa: E402
+    from core import (accounts, cloud, cloud_check, cloud_email, cloud_moderation,
+                      cloud_session, cloud_social, cloud_sync, collections, compat,
+                      config, db, enrich, feedback, installer, matcher, moderation,
+                      recommend, security, social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -913,6 +913,10 @@ class Handler(BaseHTTPRequestHandler):
             provider = (body.get("provider") or "google").strip().lower()
             if provider not in ("google", "discord"):
                 self._json({"ok": False, "error": "Такой провайдер не поддерживается."})
+                return True
+            problem = cloud_check.provider_problem(base, key, provider, redirect_to)
+            if problem:
+                self._json({"ok": False, "error": problem})
                 return True
             state = secrets.token_urlsafe(18)
             verifier = cloud.make_verifier()
