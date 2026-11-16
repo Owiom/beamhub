@@ -32,6 +32,12 @@ jobs:
       - name: Тесты установщика
         run: python tests\test_install.py
 
+      - name: Тест облачного входа
+        run: python tests\test_cloud.py
+
+      - name: Сквозной вход через Google (фейковый Supabase)
+        run: python tools\cloud_e2e.py
+
       - name: Тексты и подписи не врут
         run: python tools\lint_claims.py
 

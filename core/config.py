@@ -66,6 +66,9 @@ DEFAULTS = {
     "auto_check_updates": True,
     # токен сессии пользователя (локальный вход); пусто — не вошёл
     "user_token": "",
+    # Supabase: адрес проекта и публичный anon key (секретов здесь нет)
+    "cloud_url": "",
+    "cloud_anon_key": "",
 }
 
 _cached = None

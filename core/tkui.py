@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 import tkinter as tk
 import urllib.error
 import urllib.parse
@@ -1973,6 +1974,93 @@ class App:
 
         render()
 
+    # ---------------------------------------------------------------- облако
+    def google_login(self, window: tk.Misc | None = None) -> None:
+        try:
+            status = self.api.get("/api/auth/cloud")
+        except Exception as exc:  # noqa: BLE001
+            self.toast(f"Ошибка: {exc}", "error")
+            return
+        if not status.get("configured"):
+            self.toast("Сначала укажите адрес Supabase и anon key", "error")
+            return
+        result = self.api.post("/api/auth/google/start", {})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось начать вход"), "error")
+            return
+        state = result.get("state", "")
+        self.toast("Открыл браузер — выберите аккаунт Google", "ok")
+        if window is not None:
+            window.destroy()
+
+        def wait() -> None:
+            for _ in range(120):
+                try:
+                    poll = self.api.get("/api/auth/google/poll", state=state)
+                except Exception:  # noqa: BLE001
+                    poll = {}
+                if poll.get("status") == "done" and poll.get("token"):
+                    self.api.user_token = poll["token"]
+                    self.user = poll.get("user")
+                    try:
+                        self.api.post("/api/settings", {"user_token": poll["token"]})
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self.root.after(0, lambda: self.toast(
+                        f"Вход выполнен: {(self.user or {}).get('nickname')}", "ok"))
+                    self.root.after(0, self._apply_user)
+                    self.root.after(0, self.refresh_all)
+                    return
+                if poll.get("status") == "error":
+                    message = poll.get("error", "вход не удался")
+                    self.root.after(0, lambda m=message: self.toast(m, "error"))
+                    return
+                time.sleep(1)
+        threading.Thread(target=wait, daemon=True).start()
+
+    def cloud_block(self, frame: tk.Frame, settings: dict) -> None:
+        block = tk.Frame(frame, bg=BG)
+        block.pack(fill="x", pady=8)
+        tk.Label(block, text="Облако (Supabase) — вход через Google и общие сборки",
+                 bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
+        row = tk.Frame(block, bg=BG)
+        row.pack(fill="x", pady=(4, 0))
+        tk.Label(row, text="Project URL", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        url_var = tk.StringVar(value=settings.get("cloud_url") or "")
+        url_entry = tk.Entry(row, textvariable=url_var, bg=PANEL, fg=TEXT, relief="flat",
+                             insertbackground=TEXT, font=(FONT, 9))
+        url_entry.pack(side="left", fill="x", expand=True, padx=8, ipady=3)
+        row2 = tk.Frame(block, bg=BG)
+        row2.pack(fill="x", pady=(4, 0))
+        tk.Label(row2, text="anon key", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        key_var = tk.StringVar(value=settings.get("cloud_anon_key") or "")
+        key_entry = tk.Entry(row2, textvariable=key_var, bg=PANEL, fg=TEXT, relief="flat",
+                             insertbackground=TEXT, font=(FONT, 9), show="•")
+        key_entry.pack(side="left", fill="x", expand=True, padx=8, ipady=3)
+        buttons = tk.Frame(block, bg=BG)
+        buttons.pack(fill="x", pady=(6, 0))
+
+        def save_cloud() -> None:
+            result = self.api.post("/api/cloud/settings", {
+                "url": url_var.get().strip(), "anon_key": key_var.get().strip()})
+            if not result.get("ok"):
+                self.toast(result.get("error", "Не сохранилось"), "error")
+                return
+            self.toast("Настройки облака сохранены" if result.get("configured")
+                       else "Сохранено, но облако не настроено", "ok")
+            self.refresh_all()
+
+        theme.RoundButton(buttons, "Сохранить облако", save_cloud, height=30, radius=8,
+                          font=(FONT, 9)).pack(side="left")
+        theme.RoundButton(buttons, "Войти через Google", self.google_login, variant="primary",
+                          height=30, radius=8, font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+        configured = bool((settings.get("cloud_url") or "").startswith("https://")
+                          and settings.get("cloud_anon_key"))
+        tk.Label(block,
+                 text=("Подключено: сборки и профиль могут синхронизироваться" if configured
+                       else "Не подключено — аккаунты и сборки пока локальные"),
+                 bg=BG, fg=("#8fe0a4" if configured else DIM), font=(FONT, 8),
+                 anchor="w", wraplength=760, justify="left").pack(fill="x", pady=(4, 0))
     def publish_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
         result = self.api.post("/api/collections/publish", {"id": coll_id})
         if not result.get("ok"):
@@ -2255,6 +2343,7 @@ class App:
                      bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=(0, 10))
             theme.RoundButton(acc_row, "Войти", self.open_auth, variant="primary", height=30,
                               radius=8, font=(FONT, 9)).pack(side="left")
+        self.cloud_block(frame, settings)
         stats_row = tk.Frame(frame, bg=BG)
         stats_row.pack(fill="x", pady=4)
         theme.RoundButton(stats_row, "Статистика сообщества", self.stats_window, height=30,

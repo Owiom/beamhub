@@ -12,6 +12,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -53,8 +54,8 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, collections, compat, config, db, enrich, feedback, installer,
-                      matcher, moderation, recommend, security, social, updater)  # noqa: E402
+    from core import (accounts, cloud, collections, compat, config, db, enrich, feedback,
+                      installer, matcher, moderation, recommend, security, social, updater)  # noqa: E402
     from core.version import VERSION  # noqa: E402
     from core.providers import CATALOG_PROVIDERS, SOURCE_LABELS, modsgaming  # noqa: E402
     from core.providers import generic, playground  # noqa: E402
@@ -63,6 +64,11 @@ try:
 except Exception:  # noqa: BLE001
     _startup_failure(traceback.format_exc())
     raise SystemExit(1)
+
+# состояния входа через Google: короткоживущие, в памяти процесса
+CLOUD_STATES = cloud.SessionStore()
+CLOUD_LOGINS: dict[str, dict] = {}
+CLOUD_TOKENS: dict[str, dict] = {}
 
 try:  # окно-лаунчер не критично: без tkinter приложение всё равно работает
     from core import launcher_ui  # noqa: E402
@@ -740,6 +746,20 @@ class Handler(BaseHTTPRequestHandler):
             self._json(data if data.get("ok") else
                        {"ok": False, "error": data.get("error", "Не найдено")})
             return True
+        if path == "/api/auth/cloud":
+            url, key = cloud.settings()
+            self._json({"ok": True, "configured": cloud.configured(),
+                        "url": url, "has_key": bool(key)})
+            return True
+        if path == "/api/auth/google/poll":
+            entry = CLOUD_LOGINS.get(arg("state")) or {}
+            self._json({"ok": True, "status": entry.get("status", "pending"),
+                        "user": entry.get("user"), "error": entry.get("error", ""),
+                        "token": entry.get("token", "")})
+            return True
+        if path == "/api/auth/callback":
+            self._cloud_callback(arg("code"), arg("state"))
+            return True
         if path == "/api/stats":
             self._json({"ok": True, **collections.stats_public()})
             return True
@@ -801,6 +821,32 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(accounts.unfollow(user["id"], target))
             else:
                 self._json(accounts.follow(user["id"], target))
+            return True
+        if path == "/api/cloud/settings":
+            url = (body.get("url") or "").strip().rstrip("/")
+            key = (body.get("anon_key") or "").strip()
+            local_ok = url.startswith("http://127.0.0.1") or url.startswith("http://localhost")
+            if url and not url.startswith("https://") and not local_ok:
+                self._json({"ok": False, "error": "Адрес Supabase должен быть https."})
+                return True
+            config.update({"cloud_url": url, "cloud_anon_key": key})
+            self._json({"ok": True, "configured": cloud.configured()})
+            return True
+        if path == "/api/auth/google/start":
+            if not cloud.configured():
+                self._json({"ok": False,
+                            "error": "Укажите адрес Supabase и anon key в настройках."})
+                return True
+            base, key = cloud.settings()
+            port = self.server.server_address[1]
+            redirect_to = f"http://127.0.0.1:{port}/api/auth/callback"
+            state = secrets.token_urlsafe(18)
+            verifier = cloud.make_verifier()
+            CLOUD_STATES.add(state, verifier, redirect_to)
+            CLOUD_LOGINS[state] = {"status": "pending"}
+            url = cloud.authorize_url(base, redirect_to, state, verifier)
+            open_in_browser(url)
+            self._json({"ok": True, "state": state, "url": url})
             return True
         if path == "/api/moderation/report":
             user = self._require_user()
@@ -942,6 +988,66 @@ class Handler(BaseHTTPRequestHandler):
                                    f"Дальше BeamHub поставит файл сам."})
             return True
         return False
+
+    def _cloud_callback(self, code: str, state: str) -> None:
+        """Браузер вернулся с кодом Google: меняем его на сессию и показываем страницу."""
+        entry = CLOUD_STATES.pop(state) if state else None
+        if not entry:
+            CLOUD_LOGINS[state or "?"] = {"status": "error",
+                                          "error": "Ссылка устарела, начните вход заново."}
+            self._html_page("Не получилось", "Ссылка устарела. Вернитесь в BeamHub и начните "
+                                             "вход заново.", ok=False)
+            return
+        if not code:
+            CLOUD_LOGINS[state] = {"status": "error", "error": "Google не передал код."}
+            self._html_page("Отменено", "Вход отменён или не завершён.", ok=False)
+            return
+        base, key = cloud.settings()
+        result = cloud.exchange_code(base, key, code, entry["verifier"])
+        if not result.get("ok"):
+            CLOUD_LOGINS[state] = {"status": "error",
+                                   "error": result.get("error", "ошибка обмена")}
+            self._html_page("Ошибка входа", str(result.get("error", "")), ok=False)
+            return
+        user = result.get("user") or {}
+        if not user.get("id"):
+            info = cloud.me(base, key, result["access_token"])
+            user = info.get("user") or {}
+        if not user.get("id"):
+            CLOUD_LOGINS[state] = {"status": "error", "error": "Профиль не получен."}
+            self._html_page("Ошибка входа", "Не удалось получить профиль Google.", ok=False)
+            return
+        local = accounts.upsert_provider_user("google", user["id"], user.get("email", ""),
+                                              cloud.nickname_from(user))
+        if not local.get("ok"):
+            CLOUD_LOGINS[state] = {"status": "error", "error": "Не удалось создать аккаунт."}
+            self._html_page("Ошибка", "Не удалось создать аккаунт в BeamHub.", ok=False)
+            return
+        CLOUD_TOKENS[local["user"]["id"]] = {
+            "access_token": result["access_token"],
+            "refresh_token": result.get("refresh_token", ""),
+        }
+        CLOUD_LOGINS[state] = {"status": "done", "user": local["user"], "token": local["token"]}
+        self._html_page("Готово", "Вход выполнен. Вернитесь в BeamHub — аккаунт уже активен.")
+
+    def _html_page(self, title: str, message: str, ok: bool = True) -> None:
+        color = "#35c46b" if ok else "#ff7a1a"
+        page = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>{title} — BeamHub</title></head>
+<body style="margin:0;background:#0d0e11;color:#e9ebf0;font-family:'Segoe UI',sans-serif;
+display:flex;align-items:center;justify-content:center;height:100vh">
+<div style="text-align:center;max-width:520px;padding:32px">
+<div style="font-size:42px;color:{color};font-weight:600">BeamHub</div>
+<div style="font-size:22px;margin:16px 0 8px">{title}</div>
+<div style="color:#8d93a1;line-height:1.5">{message}</div>
+</div></body></html>"""
+        raw = page.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
 
     def _install(self, body: dict) -> None:
         mod = db.get_mod(body.get("id", ""))
