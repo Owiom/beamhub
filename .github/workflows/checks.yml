@@ -41,6 +41,9 @@ jobs:
       - name: Сквозной вход через Google (фейковый Supabase)
         run: python tools\cloud_e2e.py
 
+      - name: Сквозная синхронизация (фейковый Supabase)
+        run: python tools\sync_e2e.py
+
       - name: Тексты и подписи не врут
         run: python tools\lint_claims.py
 
