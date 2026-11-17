@@ -2557,6 +2557,16 @@ class App:
             window.destroy()
         self.collection_details(coll_id)
 
+    def _pick_categories(self) -> list[dict]:
+        """Категории каталога с количеством — для подбора мода в сборку."""
+        try:
+            state = self.api.get("/api/state")
+            rows = [row for row in state.get("categories", []) if row.get("count")]
+            return rows or [{"key": "cars", "label": CATEGORY_LABELS.get("cars", "Машины"),
+                             "count": 0}]
+        except Exception:  # noqa: BLE001
+            return []
+
     MOD_PICK_CATEGORIES = ("cars", "maps", "skins", "configs", "mods", "other")
 
     def pick_mod(self, coll_id: str, window: tk.Misc | None = None) -> None:
