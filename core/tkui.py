@@ -235,6 +235,10 @@ class App:
         self.sidebar.grid(row=0, column=0, sticky="ns")
         self.sidebar.grid_propagate(False)
         self._build_sidebar()
+        try:
+            self.root.state("zoomed")
+        except tk.TclError:
+            pass
 
         self.main = tk.Frame(body, bg=BG)
         self.main.grid(row=0, column=1, sticky="nsew")
@@ -624,8 +628,10 @@ class App:
             child.destroy()
         self.canvas.delete("all")
 
-    def _show_page(self, title: str) -> tk.Frame:
+    def _show_page(self, title: str, back=None) -> tk.Frame:
         """Открыть экран внутри основного окна (вместо отдельного окна)."""
+        previous = getattr(self, "_page_back", None)
+        self._page_back = back if back is not None else previous
         self._page_active = True
         self.canvas.grid_remove()
         self.page.grid(row=0, column=0, sticky="nsew")
@@ -662,9 +668,13 @@ class App:
         return frame
 
     def _hide_page(self) -> None:
+        back = getattr(self, "_page_back", None)
+        self._page_back = None
         self._page_active = False
         self.page.grid_remove()
         self.canvas.grid(row=0, column=0, sticky="nsew")
+        if callable(back):
+            back()
 
     def _scrollable_frame(self) -> tk.Frame:
         self._clear()
@@ -715,7 +725,9 @@ class App:
         self.total = data.get("total", 0)
         self.items.extend(data.get("items", []))
         self.count_label.configure(text=f"{self.total} модов")
+        self._columns = 0
         self._render_cards(append)
+        self.root.after(350, self._apply_resize)
 
     def _grid_columns(self) -> int:
         width = 0
@@ -723,12 +735,26 @@ class App:
             width = self.canvas.winfo_width()
         except Exception:  # noqa: BLE001
             width = 0
-        if width <= 1:
+        if width <= 200:
+            try:
+                width = max(0, self.root.winfo_width() - 240)
+            except Exception:  # noqa: BLE001
+                width = 0
+        if width <= 200:
             width = 1100
-        return max(2, min(8, width // 280))
+        return max(2, min(10, width // 250))
 
     def _on_resize(self, _event=None) -> None:
-        """На широком окне показываем больше карточек в ряд."""
+        """На широком окне показываем больше карточек в ряд (с задержкой)."""
+        if getattr(self, "_page_active", False) or self.view != "catalog":
+            return
+        if getattr(self, "_resize_pending", False):
+            return
+        self._resize_pending = True
+        self.root.after(250, self._apply_resize)
+
+    def _apply_resize(self) -> None:
+        self._resize_pending = False
         if getattr(self, "_page_active", False) or self.view != "catalog":
             return
         if not getattr(self, "items", None) or not getattr(self, "_cards_frame", None):
@@ -2533,7 +2559,8 @@ class App:
     MOD_PICK_CATEGORIES = ("cars", "maps", "skins", "configs", "mods", "other")
 
     def pick_mod(self, coll_id: str, window: tk.Misc | None = None) -> None:
-        page = self._show_page("Добавить мод в сборку")
+        page = self._show_page("Добавить мод в сборку",
+                               back=lambda: self.collection_details(coll_id))
         state = {"cat": "", "q": ""}
 
         top = tk.Frame(page, bg=BG)
@@ -2630,7 +2657,8 @@ class App:
         if not self.user:
             self.open_auth()
             return
-        page = self._show_page(f"Добавить «{mod.get('title') or ''}» в сборку")
+        page = self._show_page(f"Добавить «{mod.get('title') or ''}» в сборку",
+                               back=lambda: self.details(mod))
         try:
             data = self.api.get("/api/collections", kind="mine", limit=40)
         except Exception as exc:  # noqa: BLE001
@@ -2900,6 +2928,10 @@ class App:
         stats_row.pack(fill="x", pady=4)
         theme.RoundButton(stats_row, "Статистика сообщества", self.stats_window, height=30,
                           radius=8, font=(FONT, 9)).pack(side="left")
+        if self.is_moderator():
+            theme.RoundButton(stats_row, "Админ-панель", self.admin_panel, variant="primary",
+                              height=30, radius=8,
+                              font=(FONT_BOLD, 9)).pack(side="left", padx=8)
         buttons = tk.Frame(frame, bg=BG)
         buttons.pack(fill="x", pady=10)
         theme.RoundButton(buttons, "Сохранить", self.save_settings, variant="primary",

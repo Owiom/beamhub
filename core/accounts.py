@@ -53,6 +53,14 @@ def _email_taken(email: str, except_id: str = "") -> bool:
     return bool(row and row["id"] != except_id)
 
 
+def _maybe_first_admin(user_id: str) -> None:
+    """Если это единственный аккаунт — даём админку, чтобы было кому управлять."""
+    total = db.query_one("SELECT COUNT(*) AS c FROM users")
+    admins = db.query_one("SELECT COUNT(*) AS c FROM users WHERE role='admin'")
+    if (total or {}).get("c") == 1 and not (admins or {}).get("c"):
+        db.execute("UPDATE users SET role='admin' WHERE id=?", (user_id,))
+
+
 def register(email: str, password: str, nickname: str) -> dict:
     email = (email or "").strip().lower()
     nickname = (nickname or "").strip()
@@ -73,6 +81,7 @@ def register(email: str, password: str, nickname: str) -> dict:
         "password_salt,role,created_at,last_seen) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         (user_id, email, nickname, "", _color_for(email), "local",
          _hash_password(password, salt), salt, "user", now_ts(), now_ts()))
+    _maybe_first_admin(user_id)
     return {"ok": True, "user": _public(user_by_id(user_id)), "token": create_session(user_id)}
 
 
@@ -191,6 +200,7 @@ def upsert_provider_user(provider: str, provider_id: str, email: str, nickname: 
         "created_at,last_seen) VALUES(?,?,?,?,?,?,?,?,?,?)",
         (user_id, (email or "").lower(), nickname_final, "", _color_for(email or user_id),
          provider, provider_id, "user", now_ts(), now_ts()))
+    _maybe_first_admin(user_id)
     return {"ok": True, "user": _public(user_by_id(user_id)), "token": create_session(user_id)}
 
 

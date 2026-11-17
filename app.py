@@ -68,6 +68,7 @@ except Exception:  # noqa: BLE001
     raise SystemExit(1)
 
 # состояния входа через Google: короткоживущие, в памяти процесса
+START = time.time()
 CLOUD_STATES = cloud.SessionStore()
 CLOUD_LOGINS: dict[str, dict] = {}
 CLOUD_TOKENS: dict[str, dict] = {}
@@ -1338,17 +1339,35 @@ def tell_user(title: str, message: str) -> None:
 
 
 def write_shortcut(url: str) -> None:
-    """Файл-ярлык «Открыть BeamHub.url», чтобы можно было зайти без автозапуска браузера."""
+    """Ярлык на само приложение: веб-версия устарела и только путает."""
     if not config.is_frozen():
         return
-    options = [Path(sys.executable).resolve().parent, config.DATA_DIR]
-    for folder in options:
+    exe = Path(sys.executable).resolve()
+    folder = exe.parent
+    legacy = [folder / "Открыть BeamHub.url", config.DATA_DIR / "Открыть BeamHub.url",
+              Path.home() / "Desktop" / "Открыть BeamHub.url"]
+    for old in legacy:
         try:
-            target = folder / "Открыть BeamHub.url"
-            target.write_text(f"[InternetShortcut]\nURL={url}\nIconIndex=0\n", encoding="utf-8")
-            return
+            if old.exists():
+                old.unlink()
         except OSError:
-            continue
+            pass
+    link = folder / "BeamHub.lnk"
+    if link.exists():
+        return
+    try:
+        import subprocess
+
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s');"
+             "$s.TargetPath='%s';$s.WorkingDirectory='%s';"
+             "$s.IconLocation='%s';$s.Description='BeamHub — каталог модов BeamNG.drive';"
+             "$s.Save()" % (link, exe, folder, exe)],
+            check=False, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[beamhub] ярлык не создан: {exc}")
 
 
 def bootstrap() -> None:
