@@ -19,6 +19,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import cloud, cloud_defaults, config, i18n, theme
+from .version import VERSION
 from .util import (CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date,
                     title_key)
 
@@ -48,7 +49,7 @@ FONT = "Segoe UI"          # в App.__init__ подменится на Segoe UI 
 FONT_BOLD = "Segoe UI Semibold"
 
 CARD_W = 232
-IMG_W, IMG_H = 232, 130
+IMG_W, IMG_H = 264, 150
 
 try:
     from PIL import Image, ImageTk
@@ -140,7 +141,7 @@ class App:
         self.user: dict | None = None
         self.coll_kind = "popular"
 
-        root.title("BeamHub — каталог модов BeamNG.drive")
+        root.title(f"BeamHub {VERSION} — каталог модов BeamNG.drive")
         root.geometry("1360x860")
         root.minsize(1100, 700)
         root.configure(bg=BG)
@@ -231,7 +232,7 @@ class App:
         body.grid_rowconfigure(0, weight=1)
         body.grid_columnconfigure(1, weight=1)
 
-        self.sidebar = tk.Frame(body, bg=SOFT, width=232)
+        self.sidebar = tk.Frame(body, bg=SOFT, width=256)
         self.sidebar.grid(row=0, column=0, sticky="ns")
         self.sidebar.grid_propagate(False)
         self._build_sidebar()
@@ -246,11 +247,11 @@ class App:
         self.main.grid_columnconfigure(0, weight=1)
 
         self.head = tk.Frame(self.main, bg=BG)
-        self.head.grid(row=0, column=0, sticky="ew", padx=18, pady=(6, 0))
+        self.head.grid(row=0, column=0, sticky="ew", padx=24, pady=(14, 4))
         self.title_label = tk.Label(self.head, text="Каталог модов", bg=BG, fg=TEXT,
-                                    font=(FONT_BOLD, 17))
+                                    font=(FONT_BOLD, 22))
         self.title_label.pack(side="left")
-        self.count_label = tk.Label(self.head, text="", bg=BG, fg=DIM, font=(FONT, 10))
+        self.count_label = tk.Label(self.head, text="", bg=BG, fg=MUTED, font=(FONT, 11))
         self.count_label.pack(side="left", padx=12)
 
         filters = tk.Frame(self.head, bg=BG)
@@ -311,14 +312,14 @@ class App:
         self.nav_buttons: dict[str, tk.Frame] = {}
         self.nav_parts: dict[str, dict] = {}
         for key, title, icon in self.NAV_ITEMS:
-            row = tk.Frame(self.sidebar, bg=SOFT, cursor="hand2", height=36)
+            row = tk.Frame(self.sidebar, bg=SOFT, cursor="hand2", height=40)
             row.pack(fill="x", padx=6, pady=1)
             row.pack_propagate(False)
             bar = tk.Canvas(row, width=3, bg=SOFT, highlightthickness=0, bd=0)
             bar.pack(side="left", fill="y")
-            icon_canvas = tk.Canvas(row, width=24, height=36, bg=SOFT, highlightthickness=0, bd=0)
+            icon_canvas = tk.Canvas(row, width=26, height=40, bg=SOFT, highlightthickness=0, bd=0)
             icon_canvas.pack(side="left", padx=(10, 4))
-            label = tk.Label(row, text=title, bg=SOFT, fg=MUTED, font=(FONT, 10), anchor="w")
+            label = tk.Label(row, text=title, bg=SOFT, fg=MUTED, font=(FONT, 11), anchor="w")
             label.pack(side="left", fill="x", expand=True)
             badge = tk.Label(row, text="", bg=SOFT, fg=DIM, font=(FONT_BOLD, 8), padx=6)
             badge.pack(side="right", padx=(4, 8))
@@ -1692,7 +1693,7 @@ class App:
         info = tk.Frame(row, bg=PANEL)
         info.pack(side="left", fill="x", expand=True, pady=8)
         tk.Label(info, text=coll.get("title") or "Без названия", bg=PANEL, fg=TEXT,
-                 font=(FONT_BOLD, 11), anchor="w").pack(fill="x")
+                 font=(FONT_BOLD, 12), anchor="w").pack(fill="x")
         rating = coll.get("rating") or {}
         meta = (f"{coll.get('owner_nickname') or 'автор'} · "
                 f"{self._category_label(coll.get('category'))} · "
