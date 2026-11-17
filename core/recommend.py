@@ -82,9 +82,23 @@ def new_mods(limit: int = 12) -> dict:
     return {"ok": True, "items": rows}
 
 
-def recommended_mods(user_id: str = "", limit: int = 12) -> dict:
+def categories_from_searches(searches: list[str]) -> set[str]:
+    """Категории, угаданные по недавним запросам (карта, дрифт, скин…)."""
+    from .util import CATEGORY_LABELS
+
+    found: set[str] = set()
+    for query in searches or []:
+        text = (query or "").lower()
+        for key, label in CATEGORY_LABELS.items():
+            if key in text or label.lower() in text:
+                found.add(key)
+    return found
+
+
+def recommended_mods(user_id: str = "", limit: int = 12,
+                     searches: list[str] | None = None) -> dict:
     """Если есть аккаунт — по категориям установленного и избранного, иначе популярное."""
-    categories: set[str] = set()
+    categories: set[str] = categories_from_searches(searches or [])
     if user_id:
         rows = db.query(
             "SELECT DISTINCT m.category FROM installed i JOIN mods m ON m.id = i.mod_id "

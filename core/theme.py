@@ -124,6 +124,25 @@ class RoundButton(tk.Canvas):
         self.bind("<Configure>", lambda _e: self._draw())
         self.configure(cursor="hand2")
 
+    def configure(self, cnf=None, **kw):  # noqa: ANN001
+        """Позволяет менять текст и цвет как у обычной кнопки."""
+        new_text = kw.pop("text", None)
+        new_fg = kw.pop("fg", None)
+        changed = False
+        if new_text is not None:
+            self._text = new_text
+            changed = True
+        if new_fg is not None:
+            self._fg = new_fg
+            changed = True
+        if changed:
+            self._draw()
+        if cnf or kw:
+            return super().configure(cnf, **kw)
+        return None
+
+    config = configure
+
     def _measure(self) -> int:
         try:
             return tkfont.Font(font=self._font).measure(self._text)
@@ -176,16 +195,19 @@ class RoundButton(tk.Canvas):
             self._command()
 
     # --- совместимость с tk.Button ---
-    def configure(self, **kwargs):  # noqa: N802
-        if "text" in kwargs:
-            self._text = kwargs.pop("text")
-            self.itemconfigure("all", text=self._text)
-            if kwargs.get("width") is None:
-                super().configure(width=max(90, self._measure() + 34))
+    def configure(self, cnf=None, **kwargs):  # noqa: N802
+        new_text = kwargs.pop("text", None)
+        if new_text is not None:
+            self._text = new_text
+        new_fg = kwargs.pop("fg", None)
+        if new_fg is not None:
+            self._fg = new_fg
         if "state" in kwargs:
             self._state = "normal" if kwargs.pop("state") in ("normal", True) else "disabled"
         if "command" in kwargs:
             self._command = kwargs.pop("command")
+        if cnf:
+            super().configure(cnf)
         if kwargs:
             super().configure(**kwargs)
         self._draw()

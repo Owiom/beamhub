@@ -774,14 +774,31 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/stats":
             self._json({"ok": True, **collections.stats_public()})
             return True
+        if path == "/api/search/log":
+            query = (body.get("q") or "").strip()[:80]
+            if query:
+                raw = db.get_meta("recent_searches") or "[]"
+                try:
+                    items = json.loads(raw)
+                except json.JSONDecodeError:
+                    items = []
+                items = [query] + [item for item in items if item != query][:9]
+                db.set_meta("recent_searches", json.dumps(items, ensure_ascii=False))
+            self._json({"ok": True})
+            return True
         if path == "/api/recommend/mods":
             mod_id = arg("id")
             if mod_id:
                 self._json(recommend.similar_mods(mod_id, limit=min(24, int(arg("limit", "8") or 8))))
             else:
                 viewer = self._current_user()
-                self._json(recommend.recommended_mods(viewer["id"] if viewer else "",
-                                                      limit=min(24, int(arg("limit", "12") or 12))))
+                try:
+                    searches = json.loads(db.get_meta("recent_searches") or "[]")
+                except json.JSONDecodeError:
+                    searches = []
+                self._json(recommend.recommended_mods(
+                    viewer["id"] if viewer else "",
+                    limit=min(24, int(arg("limit", "12") or 12)), searches=searches))
             return True
         if path == "/api/recommend/collections":
             self._json(recommend.recommended_collections(limit=min(24, int(arg("limit", "8") or 8))))
