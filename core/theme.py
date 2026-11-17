@@ -1,7 +1,9 @@
-"""Оформление под Windows 11: шрифты, тёмный заголовок окна, скругления.
+"""Дизайн-система BeamHub 2026: тёмная тема, оранжевый акцент, мягкие поверхности.
 
-Всё опционально: если система старая или шрифта нет, приложение просто
-остаётся с Segoe UI и квадратными углами — падать нечему.
+Здесь живут токены оформления (палитра, радиусы, отступы, шкала шрифтов,
+состояния кнопок) и скруглённые контролы на Canvas. Всё опционально: если
+система старая или шрифта нет, приложение просто остаётся с Segoe UI и
+квадратными углами — падать нечему.
 """
 from __future__ import annotations
 
@@ -10,12 +12,65 @@ import sys
 import tkinter as tk
 from tkinter import font as tkfont
 
-# DWMWA_*
-DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-DWMWA_WINDOW_CORNER_PREFERENCE = 33
-DWMWA_SYSTEMBACKDROP_TYPE = 38
-DWMWC_ROUND = 2
-DWMSBT_MAINWINDOW = 2  # Mica
+# ---------------------------------------------------------------- палитра
+# Принцип: почти чёрный фон, поверхности на 3 ступени светлее, границы почти
+# не видны, оранжевый используется точечно — как акцент, а не как заливка.
+PALETTE = {
+    "bg": "#0b0c10",            # фон окна
+    "surface": "#15171e",       # карточки, панели, поля
+    "surface_2": "#1c1f28",     # приподнятые поверхности, hover
+    "surface_3": "#242833",     # нажатие, выбранный элемент
+    "border": "#242832",        # единственная линия сетки интерфейса
+    "border_soft": "#1b1e26",   # «мягкая» рамка карточек в покое
+    "border_strong": "#4a5364",  # рамка при наведении
+    "text": "#edeff3",          # основной текст
+    "muted": "#98a0b0",         # второй план (контраст 6.8:1 на surface)
+    "dim": "#7d8494",           # подписи, метаданные (контраст 4.8:1 на surface)
+    "accent": "#ff7a1a",        # акцент: одна кнопка на экран
+    "accent_hover": "#ff9142",
+    "accent_press": "#e86a0f",
+    "accent_soft": "#3a2410",   # плашка «дубликат», активный чип
+    "accent_soft_text": "#ffc79b",
+    "on_accent": "#1a0f04",     # текст на оранжевом
+    "success": "#34c87b",
+    "warning": "#f2b33d",
+    "danger": "#f05252",
+}
+
+# Плоские псевдонимы: удобно, когда модуль импортирует конкретные цвета.
+BG = PALETTE["bg"]
+SURFACE = PALETTE["surface"]
+SURFACE_2 = PALETTE["surface_2"]
+SURFACE_3 = PALETTE["surface_3"]
+BORDER = PALETTE["border"]
+TEXT = PALETTE["text"]
+MUTED = PALETTE["muted"]
+DIM = PALETTE["dim"]
+ACCENT = PALETTE["accent"]
+SUCCESS = PALETTE["success"]
+WARNING = PALETTE["warning"]
+
+# ---------------------------------------------------------------- радиусы
+# 10 — мелкие контролы и чипы, 12 — кнопки/поля/карточки по умолчанию,
+# 14 — «таблетки»-чипы и крупные кнопки. Всё, что больше 14, в 2026 не нужно.
+RADIUS_SM = 10
+RADIUS = 12
+RADIUS_LG = 14
+RADIUS_XS = 8  # только для бейджей внутри карточки
+
+# ---------------------------------------------------------------- отступы
+SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
+
+# ---------------------------------------------------------------- шрифты
+# Segoe UI Variable идёт с Windows 11; на Windows 10 остаётся Segoe UI.
+# Размеры — только из этой шкалы, чтобы интерфейс не «плыл».
+TYPE = {
+    "caption": 9,   # метаданные, бейджи, статус-бар
+    "body": 10,     # основной текст интерфейса
+    "large": 11,    # поля ввода, описания
+    "section": 13,  # заголовки секций, страниц
+    "title": 16,    # заголовок экрана
+}
 
 PREFERRED = (
     "Segoe UI Variable Text",   # Windows 11
@@ -28,6 +83,83 @@ PREFERRED_DISPLAY = (
     "Segoe UI Variable Text",
     "Segoe UI",
 )
+
+# ---------------------------------------------------------------- состояния
+# Одна таблица на все контролы: и кнопки Canvas, и карточки в tkui.py читают
+# цвета отсюда, поэтому hover/active/disabled выглядят одинаково везде.
+BUTTONS = {
+    "primary": {
+        "bg": PALETTE["accent"],
+        "hover": PALETTE["accent_hover"],
+        "press": PALETTE["accent_press"],
+        "fg": PALETTE["on_accent"],
+        "disabled_bg": "#23262e",
+        "disabled_fg": "#5a6172",
+    },
+    "ghost": {
+        "bg": "#171a21",
+        "hover": PALETTE["surface_3"],
+        "press": "#2b3040",
+        "fg": PALETTE["text"],
+        "disabled_bg": "#16181f",
+        "disabled_fg": "#5a6172",
+    },
+}
+
+CARD = {
+    "bg": PALETTE["surface"],
+    "bg_hover": "#1a1e27",
+    "border": PALETTE["border_soft"],
+    "border_hover": PALETTE["border_strong"],
+    "duplicate_border": "#6b3a18",
+    "badge_bg": PALETTE["accent_soft"],
+    "badge_fg": PALETTE["accent_soft_text"],
+}
+
+# DWMWA_*
+DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+DWMWA_WINDOW_CORNER_PREFERENCE = 33
+DWMWA_BORDER_COLOR = 34
+DWMWA_CAPTION_COLOR = 35
+DWMWA_SYSTEMBACKDROP_TYPE = 38
+DWMWC_ROUND = 2
+DWMSBT_MAINWINDOW = 2  # Mica
+
+
+# ---------------------------------------------------------------- утилиты
+def mix(color: str, other: str = "#000000", amount: float = 0.12) -> str:
+    """Смешать два #rrggbb: amount=0 — color, amount=1 — other.
+
+    Нужен, чтобы получить цвет нажатия из цвета наведения без таблицы
+    на каждый вариант кнопки.
+    """
+    try:
+        a = color.lstrip("#")
+        b = other.lstrip("#")
+        if len(a) != 6 or len(b) != 6:
+            raise ValueError
+        parts = []
+        for index in range(3):
+            left = int(a[index * 2:index * 2 + 2], 16)
+            right = int(b[index * 2:index * 2 + 2], 16)
+            parts.append(round(left + (right - left) * amount))
+        return "#" + "".join(f"{value:02x}" for value in parts)
+    except (ValueError, TypeError):
+        return color
+
+
+def card_colors(hover: bool = False, duplicate: bool = False) -> tuple[str, str]:
+    """Цвета карточки: (фон, рамка).
+
+    Жёстких рамок больше нет: в покое рамка почти совпадает с фоном, при
+    наведении поднимается и фон, и рамка. Дубликат получает тёплую рамку.
+    """
+    background = CARD["bg_hover"] if hover else CARD["bg"]
+    if duplicate:
+        border = "#8a4a1c" if hover else CARD["duplicate_border"]
+    else:
+        border = CARD["border_hover"] if hover else CARD["border"]
+    return background, border
 
 
 def _families() -> set[str]:
@@ -45,19 +177,34 @@ def pick_family(candidates: tuple[str, ...]) -> str:
     return "Segoe UI"
 
 
+_RESOLVED: tuple[str, str] | None = None
+
+
 def font_setup() -> tuple[str, str]:
     """Вернуть (обычный, полужирный) шрифты для интерфейса."""
+    global _RESOLVED
     base = pick_family(PREFERRED)
     semibold = "Segoe UI Semibold"
     if base.startswith("Segoe UI Variable"):
         semibold = base
     elif semibold.lower() not in _families():
         semibold = base
+    _RESOLVED = (base, semibold)
     return base, semibold
 
 
+def ui_font(size: int = TYPE["body"], semibold: bool = False) -> tuple[str, int]:
+    """Шрифт из шкалы: theme.ui_font(TYPE["title"], semibold=True)."""
+    base, bold = _RESOLVED or ("Segoe UI", "Segoe UI Semibold")
+    return (bold if semibold else base), size
+
+
 def dark_titlebar(window: tk.Misc) -> None:
-    """Тёмный заголовок и скруглённые углы — как у нативных приложений Windows 11."""
+    """Тёмный заголовок, скруглённые углы и тёмная кромка окна.
+
+    Как у нативных приложений Windows 11. Неизвестные атрибуты система
+    игнорирует, поэтому на Windows 10 ничего не ломается.
+    """
     if sys.platform != "win32":
         return
     try:
@@ -65,15 +212,22 @@ def dark_titlebar(window: tk.Misc) -> None:
         if not hwnd:
             return
         dwm = ctypes.windll.dwmapi
-        value = ctypes.c_int(1)
-        dwm.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                                  ctypes.byref(value), ctypes.sizeof(value))
-        corner = ctypes.c_int(DWMWC_ROUND)
-        dwm.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
-                                  ctypes.byref(corner), ctypes.sizeof(corner))
-        backdrop = ctypes.c_int(DWMSBT_MAINWINDOW)
-        dwm.DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE,
-                                  ctypes.byref(backdrop), ctypes.sizeof(backdrop))
+
+        def attr(index: int, value: int) -> None:
+            data = ctypes.c_int(value)
+            dwm.DwmSetWindowAttribute(hwnd, index, ctypes.byref(data), ctypes.sizeof(data))
+
+        def rgb(color: str) -> int:
+            # COLORREF: 0x00BBGGRR
+            value = color.lstrip("#")
+            red, green, blue = int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+            return red | (green << 8) | (blue << 16)
+
+        attr(DWMWA_USE_IMMERSIVE_DARK_MODE, 1)
+        attr(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWC_ROUND)
+        attr(DWMWA_CAPTION_COLOR, rgb(PALETTE["bg"]))
+        attr(DWMWA_BORDER_COLOR, rgb(PALETTE["bg"]))
+        attr(DWMWA_SYSTEMBACKDROP_TYPE, DWMSBT_MAINWINDOW)
     except Exception:  # noqa: BLE001
         pass
 
@@ -81,6 +235,7 @@ def dark_titlebar(window: tk.Misc) -> None:
 def rounded_rect(canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, radius: int,
                  **kwargs) -> int:
     """Скруглённый прямоугольник из линий и дуг — в tkinter его нет из коробки."""
+    radius = max(0, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
     points = [
         x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius,
         x2, y2 - radius, x2, y2, x2 - radius, y2, x1 + radius, y2,
@@ -92,27 +247,44 @@ def rounded_rect(canvas: tk.Canvas, x1: int, y1: int, x2: int, y2: int, radius: 
 class RoundButton(tk.Canvas):
     """Кнопка со скруглёнными углами и подсветкой при наведении.
 
-    variant: "primary" — оранжевая с тёмным текстом, "ghost" — тихая серая.
+    variant: "primary" — оранжевая с тёмным текстом (одна на экран),
+    "ghost" — тихая поверхность для всего остального.
+
+    Цвета по умолчанию берутся из BUTTONS, радиус — из RADIUS. Наведение
+    поднимает поверхность на одну ступень, нажатие опускает на полступени;
+    у primary наведение светлее, нажатие темнее акцента.
     """
 
     def __init__(self, parent: tk.Misc, text: str, command=None, *, width: int | None = None,
-                 height: int = 34, radius: int = 9, variant: str = "ghost",
-                 bg: str = "#171a21", fg: str = "#e9ebf0", hover: str = "#222733",
-                 accent: str = "#ff7a1a", accent_hover: str = "#ff8f3d", font=None,
-                 disabled_bg: str = "#1b1e26", disabled_fg: str = "#6b7280", **kwargs) -> None:
-        super().__init__(parent, highlightthickness=0, bd=0, bg=parent["bg"], **kwargs)
+                 height: int = 34, radius: int | None = None, variant: str = "ghost",
+                 bg: str | None = None, fg: str | None = None, hover: str | None = None,
+                 press: str | None = None, accent: str | None = None,
+                 accent_hover: str | None = None,
+                 font=None, disabled_bg: str | None = None, disabled_fg: str | None = None,
+                 border: str = "", border_hover: str = "", **kwargs) -> None:
+        base = BUTTONS["primary" if variant == "primary" else "ghost"]
+        try:
+            parent_bg = parent.cget("bg")
+        except Exception:  # noqa: BLE001  (ttk-контейнеры не знают про bg)
+            parent_bg = PALETTE["bg"]
+        super().__init__(parent, highlightthickness=0, bd=0, bg=parent_bg, **kwargs)
         self._text = text
         self._command = command
         self._radius = radius
-        self._variant = variant
-        self._bg = bg
-        self._fg = fg
-        self._hover = hover
-        self._accent = accent
-        self._accent_hover = accent_hover
+        self._variant = "primary" if variant == "primary" else "ghost"
+        self._bg = bg or base["bg"]
+        self._fg = fg or base["fg"]
+        self._hover = hover or base["hover"]
+        self._press = press
+        self._accent = accent or BUTTONS["primary"]["bg"]
+        self._accent_hover = accent_hover or BUTTONS["primary"]["hover"]
+        self._accent_press = (mix(accent, "#000000", 0.10) if accent
+                             else BUTTONS["primary"]["press"])
         self._font = font
-        self._disabled_bg = disabled_bg
-        self._disabled_fg = disabled_fg
+        self._disabled_bg = disabled_bg or base["disabled_bg"]
+        self._disabled_fg = disabled_fg or base["disabled_fg"]
+        self._border = border
+        self._border_hover = border_hover
         self._state = "normal"
         self._hovered = False
         self.configure(height=height, width=width or max(90, self._measure() + 34))
@@ -124,41 +296,40 @@ class RoundButton(tk.Canvas):
         self.bind("<Configure>", lambda _e: self._draw())
         self.configure(cursor="hand2")
 
-    def configure(self, cnf=None, **kw):  # noqa: ANN001
-        """Позволяет менять текст и цвет как у обычной кнопки."""
-        new_text = kw.pop("text", None)
-        new_fg = kw.pop("fg", None)
-        changed = False
-        if new_text is not None:
-            self._text = new_text
-            changed = True
-        if new_fg is not None:
-            self._fg = new_fg
-            changed = True
-        if changed:
-            self._draw()
-        if cnf or kw:
-            return super().configure(cnf, **kw)
-        return None
-
-    config = configure
-
     def _measure(self) -> int:
         try:
             return tkfont.Font(font=self._font).measure(self._text)
         except tk.TclError:
             return len(self._text) * 7
 
-    def _palette(self) -> tuple[str, str]:
+    def _effective_radius(self, height: int) -> int:
+        """Радиус держим в коридоре системы и не больше половины высоты.
+
+        Старые вызовы с radius=8 не выпадают из системы: минимум — RADIUS_SM.
+        """
+        radius = RADIUS if self._radius is None else self._radius
+        radius = max(RADIUS_SM, min(radius, RADIUS_LG))
+        return max(2, min(radius, height // 2 - 1))
+
+    def _palette(self) -> tuple[str, str, str]:
         if self._state == "disabled":
-            return self._disabled_bg, self._disabled_fg
+            return self._disabled_bg, self._disabled_fg, ""
         if self._variant == "primary":
             if self._state == "pressed":
-                return self._accent, "#1a0f04"
-            return (self._accent_hover if self._hovered else self._accent), "#1a0f04"
+                fill = self._accent_press
+            elif self._hovered:
+                fill = self._accent_hover
+            else:
+                fill = self._accent
+            return fill, BUTTONS["primary"]["fg"], ""
         if self._state == "pressed":
-            return "#2b3242", self._fg
-        return (self._hover if self._hovered else self._bg), self._fg
+            fill = self._press or mix(self._hover, "#000000", 0.12)
+        elif self._hovered:
+            fill = self._hover
+        else:
+            fill = self._bg
+        border = (self._border_hover or self._border) if self._hovered else self._border
+        return fill, self._fg, border
 
     def _draw(self) -> None:
         self.delete("all")
@@ -168,8 +339,10 @@ class RoundButton(tk.Canvas):
             wid = int(float(self.cget("width")))
         if hei <= 1:
             hei = int(float(self.cget("height")))
-        fill, color = self._palette()
-        rounded_rect(self, 1, 1, wid - 1, hei - 1, self._radius, fill=fill, outline="")
+        fill, color, border = self._palette()
+        radius = self._effective_radius(hei)
+        outline = {"outline": border, "width": 1} if border else {"outline": ""}
+        rounded_rect(self, 1, 1, wid - 1, hei - 1, radius, fill=fill, **outline)
         self.create_text(wid // 2, hei // 2, text=self._text, fill=color, font=self._font)
 
     # --- события ---
@@ -196,18 +369,41 @@ class RoundButton(tk.Canvas):
 
     # --- совместимость с tk.Button ---
     def configure(self, cnf=None, **kwargs):  # noqa: N802
-        new_text = kwargs.pop("text", None)
-        if new_text is not None:
-            self._text = new_text
-        new_fg = kwargs.pop("fg", None)
-        if new_fg is not None:
-            self._fg = new_fg
+        if isinstance(cnf, dict):
+            cnf = dict(cnf)
+            for key in ("text", "fg", "bg", "hover", "press", "state", "command",
+                        "radius", "variant", "border", "border_hover", "font"):
+                if key in cnf:
+                    kwargs[key] = cnf.pop(key)
+            if cnf:
+                super().configure(cnf)
+        if "text" in kwargs:
+            self._text = kwargs.pop("text")
+        if "fg" in kwargs:
+            self._fg = kwargs.pop("fg")
+        if "bg" in kwargs:
+            self._bg = kwargs.pop("bg")
+        if "hover" in kwargs:
+            self._hover = kwargs.pop("hover")
+        if "press" in kwargs:
+            self._press = kwargs.pop("press")
+        if "radius" in kwargs:
+            self._radius = kwargs.pop("radius")
+        if "font" in kwargs:
+            self._font = kwargs.pop("font")
+        if "border" in kwargs:
+            self._border = kwargs.pop("border")
+        if "border_hover" in kwargs:
+            self._border_hover = kwargs.pop("border_hover")
+        if "variant" in kwargs:
+            value = kwargs.pop("variant")
+            if value in ("primary", "ghost"):
+                self._variant = value
         if "state" in kwargs:
-            self._state = "normal" if kwargs.pop("state") in ("normal", True) else "disabled"
+            value = kwargs.pop("state")
+            self._state = "normal" if value in ("normal", True, "active") else "disabled"
         if "command" in kwargs:
             self._command = kwargs.pop("command")
-        if cnf:
-            super().configure(cnf)
         if kwargs:
             super().configure(**kwargs)
         self._draw()
@@ -215,15 +411,25 @@ class RoundButton(tk.Canvas):
     config = configure
 
     def set_palette(self, bg: str | None = None, fg: str | None = None,
-                    hover: str | None = None) -> None:
-        """Сменить цвета без пересоздания — для чипов-переключателей."""
+                    hover: str | None = None, press: str | None = None,
+                    border: str | None = None) -> None:
+        """Сменить цвета без пересоздания — для чипов-переключателей.
+
+        Вызывается и при снятии выделения, поэтому кнопка возвращается в
+        вариант ghost: чип — это не primary, у него своя логика цвета.
+        """
+        self._variant = "ghost"
         if bg:
             self._bg = bg
+            self._border = ""  # цветная заливка говорит сама за себя
         if fg:
             self._fg = fg
         if hover:
             self._hover = hover
-        self._variant = "ghost"
+        if press:
+            self._press = press
+        if border is not None:
+            self._border = border
         self._draw()
 
     def cget(self, key):

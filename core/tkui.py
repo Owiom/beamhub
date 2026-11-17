@@ -21,17 +21,22 @@ from tkinter import filedialog, messagebox, ttk
 from . import cloud, cloud_defaults, config, i18n, theme
 from .util import CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date
 
-BG = "#0d0e11"
-SOFT = "#12141a"
-PANEL = "#171a21"
-LINE = "#262b36"
-TEXT = "#e9ebf0"
-MUTED = "#8d93a1"
-DIM = "#6b7280"
+BG = "#0b0c10"
+SOFT = "#101116"
+PANEL = "#15171e"
+LINE = "#242832"
+LINE_SOFT = "#1b1e26"
+SURFACE_2 = "#1c1f28"
+SURFACE_3 = "#242833"
+TEXT = "#edeff3"
+MUTED = "#98a0b0"
+DIM = "#7d8494"
 ACCENT = "#ff7a1a"
+ACCENT_SOFT = "#3a2410"
+ACCENT_SOFT_TEXT = "#ffc79b"
 GREEN = "#35c46b"
-HOVER_BG = "#1b1f28"
-ACTIVE_BG = "#232833"
+HOVER_BG = "#1c1f28"
+ACTIVE_BG = "#242833"
 DUP_BG = "#2a1618"
 DUP_LINE = "#7a2f33"
 SOURCE_NAMES = {"playground": "playground.ru", "modsgaming": "modsgaming.ru",
@@ -593,6 +598,10 @@ class App:
         titles = {"catalog": "Каталог модов", "collections": "Сборки", "library": "Библиотека",
                   "updates": "Обновления", "inbox": "Загрузки", "settings": "Настройки"}
         self.title_label.configure(text=titles[view])
+        try:
+            self.title_label._ru_text = titles[view]  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
         if view == "catalog":
             self.reload()
         elif view == "collections":
@@ -656,7 +665,12 @@ class App:
         return frame
 
     def _on_wheel(self, event) -> None:
-        if self.view in ("catalog", "library", "inbox"):
+        if getattr(self, "_page_active", False):
+            canvas = getattr(self, "_page_canvas", None)
+            if canvas is not None:
+                canvas.yview_scroll(int(-event.delta / 120), "units")
+            return
+        if self.view in ("catalog", "library", "inbox", "collections", "updates", "settings"):
             self.canvas.yview_scroll(int(-event.delta / 120), "units")
 
     # ---------------------------------------------------------------- каталог
@@ -803,7 +817,7 @@ class App:
 
     def _bind_card_hover(self, card: tk.Frame, duplicate: bool) -> None:
         """Подсветка карточки при наведении — без мигания, когда ведёшь по дочерним виджетам."""
-        normal = DUP_LINE if duplicate else LINE
+        normal = DUP_LINE if duplicate else LINE_SOFT
 
         def inside() -> bool:
             x, y = card.winfo_pointerxy()
@@ -815,7 +829,7 @@ class App:
             return False
 
         def enter(_event=None) -> None:
-            card.configure(highlightbackground="#55617a")
+            card.configure(highlightbackground=SURFACE_3)
 
         def leave(_event=None) -> None:
             card.after(30, lambda: None if inside() else card.configure(highlightbackground=normal))
@@ -921,10 +935,14 @@ class App:
 
     def details(self, item: dict) -> None:
         window = self._show_page(item.get("title") or "Мод")
-        header = tk.Label(window, text=item.get("title") or "", bg=BG, fg=TEXT,
-                          font=(FONT_BOLD, 14), wraplength=700, justify="left",
-                          anchor="w")
-        header.pack(fill="x", padx=18, pady=(16, 4))
+        if item.get("image"):
+            holder = tk.Frame(window, bg="#0a0b0e", height=240)
+            holder.pack(fill="x", pady=(0, 8))
+            holder.pack_propagate(False)
+            preview = tk.Label(holder, bg="#0a0b0e", bd=0, text="")
+            preview.pack(fill="both", expand=True)
+            self._request_image(item["image"], preview, item)
+
 
         meta = " · ".join(filter(None, [
             item.get("category_label"), f"игра {item['game_version']}" if item.get("game_version") else "",
@@ -952,7 +970,7 @@ class App:
         buttons.pack(fill="x", padx=18, pady=(0, 16))
         theme.RoundButton(buttons, "Скачать", lambda: self.install(item), variant="primary",
                           height=34, radius=9, font=(FONT_BOLD, 10)).pack(side="left")
-        theme.RoundButton(buttons, "＋ В сборку", lambda: self.add_to_collection_from_catalog(item),
+        theme.RoundButton(buttons, "＋ В сборку", lambda: self.pick_collection_for_mod(item),
                           height=34, radius=9, bg=PANEL, fg=TEXT, hover=ACTIVE_BG,
                           font=(FONT, 10)).pack(side="left", padx=8)
         theme.RoundButton(buttons, "Открыть страницу", lambda: self._open_page(item),
@@ -1557,6 +1575,7 @@ class App:
                 return
             items = [{
                 "id": row.get("id"), "title": row.get("title"),
+                "cover": row.get("cover") or "",
                 "category": row.get("category"), "items_count": row.get("items_count", 0),
                 "installs": row.get("installs", 0), "views": row.get("views", 0),
                 "owner_nickname": row.get("owner_nickname"), "tags": [],
@@ -1573,6 +1592,10 @@ class App:
             items = data.get("items", [])
             total = data.get("total", len(items))
         self.count_label.configure(text=f"{total} сборок")
+        try:
+            self.count_label._ru_text = f"{total} сборок"  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
         if not items:
             text = ("У вас пока нет сборок — создайте первую." if self.coll_kind == "mine"
                     else "Пока никто не опубликовал сборок. Будьте первым!")
@@ -1791,7 +1814,7 @@ class App:
                               lambda: self.report_dialog("collection", coll_id,
                                                          coll.get("title") or ""),
                               height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
-        theme.RoundButton(actions, f"Отзывы ({coll.get('comments_count', 0)})",
+        theme.RoundButton(actions, "Отзывы и комментарии",
                           lambda: self.collection_reviews(coll_id, coll.get("title") or ""),
                           height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
         if coll.get("is_owner"):
@@ -2466,8 +2489,11 @@ class App:
             for mod in items:
                 row = tk.Frame(grid, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
                 row.pack(fill="x", pady=2)
-                thumb = tk.Label(row, bg="#0a0b0e", width=12, height=4, text="")
-                thumb.pack(side="left", padx=(8, 10), pady=6)
+                box = tk.Frame(row, bg="#0a0b0e", width=96, height=54)
+                box.pack(side="left", padx=(8, 10), pady=6)
+                box.pack_propagate(False)
+                thumb = tk.Label(box, bg="#0a0b0e", bd=0, text="")
+                thumb.pack(fill="both", expand=True)
                 if mod.get("image"):
                     self._request_image(mod["image"], thumb, mod)
                 info = tk.Frame(row, bg=PANEL)
@@ -2499,6 +2525,43 @@ class App:
 
         search.bind("<Return>", search_now)
         draw()
+
+    def pick_collection_for_mod(self, mod: dict) -> None:
+        """Выбор сборки на странице мода — без скрытых панелей."""
+        if not self.user:
+            self.open_auth()
+            return
+        page = self._show_page(f"Добавить «{mod.get('title') or ''}» в сборку")
+        try:
+            data = self.api.get("/api/collections", kind="mine", limit=40)
+        except Exception as exc:  # noqa: BLE001
+            tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+            return
+        mine = data.get("items", [])
+        if not mine:
+            tk.Label(page, text="Сборок пока нет — создайте первую в разделе «Сборки».",
+                     bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
+            return
+
+        def add(coll_id: str) -> None:
+            result = self.api.post("/api/collections/items",
+                                   {"id": coll_id, "mod_id": mod["id"], "action": "add"})
+            if not result.get("ok"):
+                self.toast(result.get("error", "Не получилось"), "error")
+                return
+            self.toast(f"Добавлено в «{next((c.get('title') for c in mine if c['id'] == coll_id), '')}»", "ok")
+
+        for coll in mine:
+            row = tk.Frame(page, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=coll.get("title") or "сборка", bg=PANEL, fg=TEXT,
+                     font=(FONT_BOLD, 10), anchor="w").pack(side="left", fill="x",
+                                                            expand=True, padx=10, pady=8)
+            tk.Label(row, text=f"{coll.get('items_count', 0)} модов", bg=PANEL, fg=DIM,
+                     font=(FONT, 8)).pack(side="left", padx=6)
+            theme.RoundButton(row, "Добавить", lambda c=coll["id"]: add(c), variant="primary",
+                              height=28, radius=8,
+                              font=(FONT_BOLD, 8)).pack(side="right", padx=8)
 
     def _add_to_collection_page(self, coll_id: str, mod: dict) -> None:
         result = self.api.post("/api/collections/items",
