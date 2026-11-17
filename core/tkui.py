@@ -19,7 +19,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import cloud, cloud_defaults, config, i18n, theme
-from .util import CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date
+from .util import (CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date,
+                    title_key)
 
 BG = "#0b0c10"
 SOFT = "#101116"
@@ -274,6 +275,8 @@ class App:
         scroll.grid(row=0, column=1, sticky="ns")
         self.canvas.configure(yscrollcommand=scroll.set)
         self.canvas.bind_all("<MouseWheel>", self._on_wheel)
+        self._columns = 0
+        self.canvas.bind("<Configure>", self._on_resize, add="+")
         self.page = tk.Frame(self.content, bg=BG)
         self._page_active = False
         self._page_canvas = None
@@ -629,11 +632,13 @@ class App:
         for child in self.page.winfo_children():
             child.destroy()
         head = tk.Frame(self.page, bg=BG)
-        head.pack(fill="x", padx=18, pady=(10, 4))
+        head.pack(fill="x", padx=18, pady=(14, 6))
         theme.RoundButton(head, "← Назад", self._hide_page, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left")
-        tk.Label(head, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 14), anchor="w").pack(
-            side="left", padx=12)
+        accent = tk.Frame(head, bg=ACCENT, width=3)
+        accent.pack(side="left", fill="y", padx=(14, 10), pady=2)
+        tk.Label(head, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 15), anchor="w").pack(
+            side="left")
         body = tk.Frame(self.page, bg=BG)
         body.pack(fill="both", expand=True)
         canvas = tk.Canvas(body, bg=BG, highlightthickness=0)
@@ -645,7 +650,14 @@ class App:
         window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
         canvas.bind("<Configure>",
                     lambda event, c=canvas, w=window_id: c.itemconfigure(w, width=event.width))
-        frame.bind("<Configure>", lambda _e, c=canvas: c.configure(scrollregion=c.bbox("all")))
+        def sync_page(_event=None) -> None:
+            bbox = canvas.bbox("all")
+            if bbox:
+                height = max(bbox[3], canvas.winfo_height())
+                canvas.configure(scrollregion=(0, 0, bbox[2], height))
+
+        frame.bind("<Configure>", sync_page)
+        canvas.bind("<Configure>", sync_page, add="+")
         self._page_canvas = canvas
         return frame
 
@@ -658,8 +670,15 @@ class App:
         self._clear()
         frame = tk.Frame(self.canvas, bg=BG)
         window = self.canvas.create_window((0, 0), window=frame, anchor="nw")
-        frame.bind("<Configure>", lambda _e: self.canvas.configure(
-            scrollregion=self.canvas.bbox("all")))
+
+        def sync_scroll(_event=None) -> None:
+            bbox = self.canvas.bbox("all")
+            if bbox:
+                height = max(bbox[3], self.canvas.winfo_height())
+                self.canvas.configure(scrollregion=(0, 0, bbox[2], height))
+
+        frame.bind("<Configure>", sync_scroll)
+        self.canvas.bind("<Configure>", sync_scroll, add="+")
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(window, width=e.width))
         self._cards_frame = frame
         return frame
@@ -698,9 +717,31 @@ class App:
         self.count_label.configure(text=f"{self.total} модов")
         self._render_cards(append)
 
+    def _grid_columns(self) -> int:
+        width = 0
+        try:
+            width = self.canvas.winfo_width()
+        except Exception:  # noqa: BLE001
+            width = 0
+        if width <= 1:
+            width = 1100
+        return max(2, min(8, width // 280))
+
+    def _on_resize(self, _event=None) -> None:
+        """На широком окне показываем больше карточек в ряд."""
+        if getattr(self, "_page_active", False) or self.view != "catalog":
+            return
+        if not getattr(self, "items", None) or not getattr(self, "_cards_frame", None):
+            return
+        columns = self._grid_columns()
+        if columns == getattr(self, "_columns", 0):
+            return
+        self._render_cards(False)
+
     def _render_cards(self, append: bool) -> None:
         frame = self._cards_frame if append and self._cards_frame else self._scrollable_frame()
-        columns = 4
+        columns = self._grid_columns()
+        self._columns = columns
         # перерисовываем все карточки: проще и предсказуемее, чем считать индексы
         for child in frame.winfo_children():
             child.destroy()
@@ -1291,6 +1332,8 @@ class App:
         menu.add_command(label="Мой профиль", command=self.my_profile)
         menu.add_command(label="Мои сборки", command=self._menu_my_collections)
         menu.add_command(label="Настройки", command=lambda: self.switch("settings"))
+        if self.is_moderator():
+            menu.add_command(label="Админ-панель", command=self.admin_panel)
         menu.add_separator()
         menu.add_command(label="Выйти", command=self.logout)
         try:
@@ -1447,9 +1490,6 @@ class App:
                               font=(FONT_BOLD, 9)).pack(side="left")
             theme.RoundButton(cloud_actions, "Создать аккаунт", lambda: cloud_submit("signup"),
                               height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
-            theme.RoundButton(cloud_actions, "Discord",
-                              lambda: self.oauth_login("discord", window), height=32, radius=9,
-                              font=(FONT, 9)).pack(side="left")
 
         def submit() -> None:
             payload = {"email": email.get().strip(), "password": password.get()}
@@ -2083,6 +2123,70 @@ class App:
                           font=(FONT, 9)).pack(side="left", padx=8)
         self._translate_ui(window)
 
+    def admin_panel(self) -> None:
+        if not self.is_moderator():
+            self.toast("Нужны права администратора", "error")
+            return
+        page = self._show_page("Админ-панель")
+        try:
+            data = self.api.get("/api/admin/stats")
+        except Exception as exc:  # noqa: BLE001
+            tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+            return
+        if not data.get("ok"):
+            tk.Label(page, text=data.get("error", "Нет доступа"), bg=BG, fg=MUTED).pack(anchor="w")
+            return
+        counts = data.get("counts") or {}
+        cards = tk.Frame(page, bg=BG)
+        cards.pack(fill="x", pady=(0, 10))
+        numbers = (
+            ("Модов в каталоге", counts.get("mods", 0)),
+            ("Установлено", counts.get("installed", 0)),
+            ("Избранное", counts.get("favorites", 0)),
+            ("Обновления", counts.get("updates", 0)),
+            ("Дубликаты", counts.get("duplicates", 0)),
+            ("Пользователи", counts.get("users", 0)),
+            ("Сборки", counts.get("collections", 0)),
+            ("Опубликовано", counts.get("published", 0)),
+            ("Комментарии", counts.get("comments", 0)),
+            ("Оценки", counts.get("ratings", 0)),
+            ("Жалобы", counts.get("reports_open", 0)),
+        )
+        for index, (label, value) in enumerate(numbers):
+            cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            cell.grid(row=index // 4, column=index % 4, sticky="nsew", padx=(0, 6), pady=(0, 6))
+            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 16),
+                     anchor="w").pack(fill="x", padx=10, pady=(8, 0))
+            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(
+                fill="x", padx=10, pady=(0, 8))
+        for column in range(4):
+            cards.grid_columnconfigure(column, weight=1)
+
+        size_mb = round(int(data.get("db_bytes") or 0) / 1024 / 1024, 2)
+        hours = int(data.get("uptime_seconds") or 0) // 3600
+        minutes = (int(data.get("uptime_seconds") or 0) % 3600) // 60
+        tk.Label(page, text=f"Версия {data.get('version')} · база {size_mb} МБ · "
+                            f"работает {hours} ч {minutes} мин",
+                 bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
+        paths = data.get("paths") or {}
+        tk.Label(page, text=f"Моды: {paths.get('mods_dir') or '—'}",
+                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", pady=(2, 0))
+        tk.Label(page, text=f"Игра: {paths.get('game_path') or '—'}",
+                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+        tk.Label(page, text=f"Данные: {paths.get('data_dir') or '—'}",
+                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+
+        tk.Label(page, text="События", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                 anchor="w").pack(fill="x", pady=(12, 2))
+        events = data.get("events") or []
+        tk.Label(page, text=" · ".join(f"{row['kind']}: {row['n']}" for row in events) or "нет",
+                 bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
+        recent = data.get("recent") or []
+        for row in recent[:10]:
+            target = row.get("mod_id") or row.get("collection_id") or ""
+            tk.Label(page, text=f"{human_ago(row.get('created_at'))} · {row.get('kind')} {target}",
+                     bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+
     def moderation_panel(self) -> None:
         if not self.is_moderator():
             self.toast("Нужны права модератора", "error")
@@ -2372,11 +2476,6 @@ class App:
                           font=(FONT_BOLD, 9)).pack(side="left")
         theme.RoundButton(mail_buttons, "Создать аккаунт", lambda: self.email_auth("signup"),
                           height=30, radius=8, font=(FONT, 9)).pack(side="left", padx=8)
-        theme.RoundButton(buttons, "Войти через Google", self.google_login, height=30,
-                          radius=8, font=(FONT, 9)).pack(side="left", padx=8)
-        theme.RoundButton(buttons, "Войти через Discord",
-                          lambda: self.oauth_login("discord"), height=30, radius=8,
-                          font=(FONT, 9)).pack(side="left")
         theme.RoundButton(buttons, "Мои сборки в облако", self.sync_push, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left", padx=(0, 8))
         theme.RoundButton(buttons, "Загрузить из облака", self.sync_pull, height=30, radius=8,
@@ -2460,8 +2559,8 @@ class App:
         def draw_chips() -> None:
             for child in chips.winfo_children():
                 child.destroy()
-            options = [("", "Все")] + [(key, CATEGORY_LABELS.get(key, key))
-                                       for key in self.MOD_PICK_CATEGORIES]
+            options = [("", "Все")] + [(row["key"], f"{row['label']} ({row['count']})")
+                                       for row in self._pick_categories()]
             for key, label in options:
                 theme.RoundButton(chips, label, lambda k=key: set_cat(k), height=28,
                                   radius=14, font=(FONT, 9),
@@ -2472,7 +2571,7 @@ class App:
             draw_chips()
             for child in grid.winfo_children():
                 child.destroy()
-            params = {"limit": 30}
+            params = {"limit": 60}
             if state["q"]:
                 params["q"] = state["q"]
             if state["cat"]:
@@ -2658,7 +2757,18 @@ class App:
             tk.Label(frame, text="Новых архивов нет.", bg=BG, fg=MUTED,
                      font=(FONT, 11)).pack(anchor="w", pady=20)
             return
+        try:
+            library = self.api.get("/api/library")
+            library_items = library.get("items") or library.get("installed") or []
+        except Exception:  # noqa: BLE001
+            library_items = []
+        installed_names = {str(item.get("filename") or "").lower() for item in library_items}
+        installed_keys = {title_key(item.get("title") or item.get("filename") or "")
+                          for item in library_items}
+        installed_keys.discard("")
         for row in items:
+            already = (str(row.get("name") or "").lower() in installed_names
+                       or title_key(row.get("name") or "") in installed_keys)
             line = tk.Frame(frame, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             line.pack(fill="x", pady=4)
             info = tk.Frame(line, bg=PANEL)
@@ -2668,9 +2778,13 @@ class App:
             tk.Label(info, text=f"{row.get('size_text')} · "
                                 f"{'мод' if row.get('valid') else 'не похоже на мод'}",
                      bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
-            button = theme.RoundButton(line, "Установить", lambda r=row: self.install_file(r),
-                                        variant="primary", height=30, radius=8,
-                                        font=(FONT_BOLD, 9))
+            if already:
+                tk.Label(info, text="уже установлен — можно поставить заново",
+                         bg=PANEL, fg="#8fe0a4", font=(FONT, 8), anchor="w").pack(fill="x")
+            button = theme.RoundButton(line, "Установить заново" if already else "Установить",
+                                       lambda r=row: self.install_file(r),
+                                       variant=("ghost" if already else "primary"), height=30,
+                                       radius=8, font=(FONT_BOLD if not already else FONT, 9))
             if not row.get("valid"):
                 button.configure(state="disabled")
             button.pack(side="left", padx=10)

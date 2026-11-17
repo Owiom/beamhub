@@ -237,6 +237,11 @@ def init() -> None:
             if "title_key" not in mod_columns:
                 _conn.execute("ALTER TABLE mods ADD COLUMN title_key TEXT DEFAULT ''")
             _conn.execute("CREATE INDEX IF NOT EXISTS mods_title_key ON mods(title_key)")
+            # первый (самый старый) аккаунт делаем администратором, если админов нет
+            _conn.execute(
+                "UPDATE users SET role='admin' WHERE id=(SELECT id FROM users "
+                "ORDER BY created_at LIMIT 1) AND NOT EXISTS "
+                "(SELECT 1 FROM users WHERE role='admin')")
             coll_columns = {row["name"] for row in _conn.execute("PRAGMA table_info(collections)")}
             if "remote" not in coll_columns:
                 _conn.execute("ALTER TABLE collections ADD COLUMN remote INTEGER DEFAULT 0")

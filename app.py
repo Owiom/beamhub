@@ -771,6 +771,46 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/auth/callback":
             self._cloud_callback(arg("code"), arg("state"))
             return True
+        if path == "/api/admin/stats":
+            user = self._require_user()
+            if not user:
+                return True
+            if user.get("role") not in ("admin", "moderator"):
+                self._json({"ok": False, "error": "Нужны права администратора."}, status=403)
+                return True
+            cfg = config.load()
+            db_path = Path(db.DB_PATH) if hasattr(db, "DB_PATH") else None
+            size = db_path.stat().st_size if db_path and db_path.exists() else 0
+            installed = db.installed_list()
+            events = db.query(
+                "SELECT kind, COUNT(*) AS n FROM stats_events GROUP BY kind")
+            recent = db.query(
+                "SELECT kind, mod_id, collection_id, created_at FROM stats_events "
+                "ORDER BY created_at DESC LIMIT 15")
+            self._json({"ok": True, "version": VERSION, "uptime_seconds": int(time.time() - START),
+                        "db_bytes": size,
+                        "counts": {
+                            "mods": db.count_mods(),
+                            "installed": len(installed),
+                            "favorites": db.favorites_count(),
+                            "updates": db.updates_count(),
+                            "duplicates": len(db.installed_doubles()),
+                            "users": db.query_one("SELECT COUNT(*) AS c FROM users")["c"],
+                            "collections": db.query_one(
+                                "SELECT COUNT(*) AS c FROM collections")["c"],
+                            "published": db.query_one(
+                                "SELECT COUNT(*) AS c FROM collections WHERE published=1")["c"],
+                            "comments": db.query_one("SELECT COUNT(*) AS c FROM comments")["c"],
+                            "ratings": db.query_one("SELECT COUNT(*) AS c FROM ratings")["c"],
+                            "reports_open": db.query_one(
+                                "SELECT COUNT(*) AS c FROM reports WHERE status='open'")["c"],
+                        },
+                        "events": events, "recent": recent,
+                        "sources": db.source_counts(),
+                        "paths": {"mods_dir": cfg.get("mods_dir") or "",
+                                  "game_path": cfg.get("game_path") or "",
+                                  "data_dir": str(config.DATA_DIR)}})
+            return True
         if path == "/api/stats":
             self._json({"ok": True, **collections.stats_public()})
             return True
