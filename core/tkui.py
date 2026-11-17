@@ -7,6 +7,7 @@ API (тот же процесс), картинки — через встроен
 from __future__ import annotations
 
 import json
+import shutil
 import re
 import threading
 import time
@@ -14,9 +15,10 @@ import tkinter as tk
 import urllib.error
 import urllib.parse
 import urllib.request
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 
-from . import cloud, cloud_defaults, i18n, theme
+from . import cloud, cloud_defaults, config, i18n, theme
 from .util import human_ago, human_date
 
 BG = "#0d0e11"
@@ -267,6 +269,9 @@ class App:
         scroll.grid(row=0, column=1, sticky="ns")
         self.canvas.configure(yscrollcommand=scroll.set)
         self.canvas.bind_all("<MouseWheel>", self._on_wheel)
+        self.page = tk.Frame(self.content, bg=BG)
+        self._page_active = False
+        self._page_canvas = None
 
         self.status = tk.Label(self.root, text="Готово", bg=SOFT, fg=MUTED, anchor="w",
                                font=(FONT, 9), padx=14, pady=6)
@@ -581,6 +586,8 @@ class App:
 
     # ---------------------------------------------------------------- навигация
     def switch(self, view: str) -> None:
+        if getattr(self, "_page_active", False):
+            self._hide_page()
         self.view = view
         self._set_active_nav(view)
         titles = {"catalog": "Каталог модов", "collections": "Сборки", "library": "Библиотека",
@@ -604,6 +611,39 @@ class App:
         for child in self.canvas.winfo_children():
             child.destroy()
         self.canvas.delete("all")
+
+    def _show_page(self, title: str) -> tk.Frame:
+        """Открыть экран внутри основного окна (вместо отдельного окна)."""
+        self._page_active = True
+        self.canvas.grid_remove()
+        self.page.grid(row=0, column=0, sticky="nsew")
+        for child in self.page.winfo_children():
+            child.destroy()
+        head = tk.Frame(self.page, bg=BG)
+        head.pack(fill="x", padx=18, pady=(10, 4))
+        theme.RoundButton(head, "← Назад", self._hide_page, height=30, radius=8,
+                          font=(FONT, 9)).pack(side="left")
+        tk.Label(head, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 14), anchor="w").pack(
+            side="left", padx=12)
+        body = tk.Frame(self.page, bg=BG)
+        body.pack(fill="both", expand=True)
+        canvas = tk.Canvas(body, bg=BG, highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        scroll.pack(side="right", fill="y")
+        canvas.configure(yscrollcommand=scroll.set)
+        frame = tk.Frame(canvas, bg=BG)
+        window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
+        canvas.bind("<Configure>",
+                    lambda event, c=canvas, w=window_id: c.itemconfigure(w, width=event.width))
+        frame.bind("<Configure>", lambda _e, c=canvas: c.configure(scrollregion=c.bbox("all")))
+        self._page_canvas = canvas
+        return frame
+
+    def _hide_page(self) -> None:
+        self._page_active = False
+        self.page.grid_remove()
+        self.canvas.grid(row=0, column=0, sticky="nsew")
 
     def _scrollable_frame(self) -> tk.Frame:
         self._clear()
@@ -681,6 +721,14 @@ class App:
         self.total = data.get("total", self.total)
         self._render_cards(True)
 
+    def _bind_click_tree(self, widget: tk.Misc, callback) -> None:
+        """Клик по любому месту плитки, кроме кнопок — у них своё действие."""
+        skip = (tk.Button, theme.RoundButton)
+        if not isinstance(widget, skip):
+            widget.bind("<Button-1>", lambda _e, cb=callback: cb())
+        for child in widget.winfo_children():
+            self._bind_click_tree(child, callback)
+
     def _card(self, parent: tk.Frame, item: dict) -> tk.Frame:
         duplicate = bool(item.get("duplicate"))
         card = tk.Frame(parent, bg=PANEL, highlightthickness=1,
@@ -749,8 +797,7 @@ class App:
                   cursor="hand2", activebackground="#232833", activeforeground=TEXT,
                   command=lambda i=item: self.details(i)).pack(side="left", padx=(4, 0))
 
-        for widget in (thumb, label):
-            widget.bind("<Double-Button-1>", lambda _e, i=item: self.details(i))
+        self._bind_click_tree(card, lambda i=item: self.details(i))
         self._bind_card_hover(card, duplicate)
         return card
 
@@ -873,9 +920,7 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def details(self, item: dict) -> None:
-        window = tk.Toplevel(self.root, bg=BG)
-        window.title(item.get("title") or "Мод")
-        window.geometry("760x560")
+        window = self._show_page(item.get("title") or "Мод")
         header = tk.Label(window, text=item.get("title") or "", bg=BG, fg=TEXT,
                           font=(FONT_BOLD, 14), wraplength=700, justify="left",
                           anchor="w")
@@ -1471,6 +1516,8 @@ class App:
         self.render_collections()
 
     def render_collections(self) -> None:
+        if getattr(self, "_page_active", False):
+            self._hide_page()
         frame = self._scrollable_frame()
         self.count_label.configure(text="")
         toolbar = tk.Frame(frame, bg=BG)
@@ -1537,6 +1584,18 @@ class App:
         cover = tk.Label(row, text=(coll.get("title") or "?")[:2].upper(), bg="#241a10",
                          fg=ACCENT, font=(FONT_BOLD, 16), width=6, height=3)
         cover.pack(side="left", padx=(10, 12), pady=8)
+        if coll.get("cover"):
+            try:
+                from PIL import Image, ImageTk
+
+                file = Path(config.DATA_DIR) / str(coll["cover"])
+                with Image.open(file) as image:
+                    image.thumbnail((96, 64))
+                    photo = ImageTk.PhotoImage(image)
+                cover.configure(image=photo, text="", width=96, height=64)
+                cover.image = photo
+            except Exception:  # noqa: BLE001
+                pass
         info = tk.Frame(row, bg=PANEL)
         info.pack(side="left", fill="x", expand=True, pady=8)
         tk.Label(info, text=coll.get("title") or "Без названия", bg=PANEL, fg=TEXT,
@@ -1554,8 +1613,7 @@ class App:
                      font=(FONT, 8), anchor="w").pack(fill="x")
         theme.RoundButton(row, "Открыть", lambda c=coll["id"]: self.collection_details(c),
                           height=30, radius=8, font=(FONT, 9)).pack(side="right", padx=12)
-        for widget in (row, cover, info):
-            widget.bind("<Button-1>", lambda _e, c=coll["id"]: self.collection_details(c))
+        self._bind_click_tree(row, lambda c=coll["id"]: self.collection_details(c))
 
     def create_collection(self) -> None:
         if not self.user:
@@ -1607,6 +1665,36 @@ class App:
         combo.set(self._category_label(collection.get("category") or "other"))
         combo.pack(fill="x")
         tags = field("Теги через запятую", ", ".join(collection.get("tags") or []))
+        cover_state = {"path": collection.get("cover") or ""}
+        tk.Label(body, text="Обложка", bg=PANEL, fg=MUTED, font=(FONT, 9),
+                 anchor="w").pack(fill="x", pady=(6, 0))
+        cover_row = tk.Frame(body, bg=PANEL)
+        cover_row.pack(fill="x")
+        cover_label = tk.Label(cover_row, text=cover_state["path"] or "не выбрана",
+                               bg=PANEL, fg=(TEXT if cover_state["path"] else DIM),
+                               font=(FONT, 8), anchor="w")
+        cover_label.pack(side="left", fill="x", expand=True)
+
+        def choose_cover() -> None:
+            picked = filedialog.askopenfilename(
+                title="Обложка сборки",
+                filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp")])
+            if not picked:
+                return
+            try:
+                covers = Path(config.DATA_DIR) / "covers"
+                covers.mkdir(parents=True, exist_ok=True)
+                suffix = Path(picked).suffix.lower() or ".png"
+                name = f"cover_{int(time.time())}{suffix}"
+                shutil.copy2(picked, covers / name)
+            except OSError as exc:
+                cover_label.configure(text=f"не удалось: {exc}", fg="#ffb3b3")
+                return
+            cover_state["path"] = f"covers/{name}"
+            cover_label.configure(text=cover_state["path"], fg="#8fe0a4")
+
+        theme.RoundButton(cover_row, "Выбрать фото", choose_cover, height=26, radius=8,
+                          font=(FONT, 8)).pack(side="right")
         status = tk.Label(body, text="", bg=PANEL, fg="#ffb3b3", font=(FONT, 9), anchor="w")
         status.pack(fill="x", pady=(4, 0))
 
@@ -1620,6 +1708,7 @@ class App:
                 "description": description.get("1.0", "end").strip(),
                 "category": keys[labels.index(combo.get())] if combo.get() in labels else "other",
                 "tags": tags.get(),
+                "cover": cover_state["path"],
             }
             if coll_id:
                 payload["id"] = coll_id
@@ -1664,10 +1753,7 @@ class App:
         installed = set(plan.get("installed") or [])
         rating = coll.get("rating") or {}
 
-        window = tk.Toplevel(self.root, bg=BG)
-        window.title(coll.get("title") or "Сборка")
-        window.geometry("780x680")
-        window.transient(self.root)
+        window = self._show_page(coll.get("title") or "Сборка")
 
         head = tk.Frame(window, bg=BG)
         head.pack(fill="x", padx=20, pady=(16, 4))
@@ -1694,7 +1780,7 @@ class App:
         theme.RoundButton(
             actions,
             "Установить сборку" + (f" ({missing_count})" if missing_count else ""),
-            lambda: self.apply_collection(coll_id, window), variant="primary",
+            lambda: self.apply_collection(coll_id), variant="primary",
             height=32, radius=9, font=(FONT_BOLD, 9)).pack(side="left")
         if not coll.get("is_owner"):
             theme.RoundButton(actions, "Пожаловаться",
@@ -1706,33 +1792,25 @@ class App:
                           height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
         if coll.get("is_owner"):
             theme.RoundButton(actions, "＋ Добавить мод",
-                              lambda: self.pick_mod(coll_id, window), height=32, radius=9,
+                              lambda: self.pick_mod(coll_id), height=32, radius=9,
                               font=(FONT, 9)).pack(side="left", padx=8)
             theme.RoundButton(actions, "Редактировать",
                               lambda: self.collection_edit(coll_id, coll), height=32, radius=9,
                               font=(FONT, 9)).pack(side="left")
             theme.RoundButton(
                 actions, "Опубликовать" if not coll.get("published") else "Обновить версию",
-                lambda: self.publish_collection(coll_id, window), height=32, radius=9,
+                lambda: self.publish_collection(coll_id), height=32, radius=9,
                 font=(FONT, 9)).pack(side="left", padx=8)
             theme.RoundButton(actions, "Удалить",
-                              lambda: self.delete_collection(coll_id, window), height=32,
+                              lambda: self.delete_collection(coll_id), height=32,
                               radius=9, font=(FONT, 9)).pack(side="right")
 
         tk.Label(window, text=f"Состав: {len(coll.get('items', []))} модов · "
                               f"установлено {len(installed)}",
                  bg=BG, fg=TEXT, font=(FONT_BOLD, 10), anchor="w").pack(fill="x", padx=20,
                                                                        pady=(4, 4))
-        body = tk.Frame(window, bg=BG)
-        body.pack(fill="both", expand=True, padx=20)
-        canvas = tk.Canvas(body, bg=BG, highlightthickness=0)
-        canvas.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
-        scroll.pack(side="right", fill="y")
-        canvas.configure(yscrollcommand=scroll.set)
-        inner = tk.Frame(canvas, bg=BG)
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        inner = tk.Frame(window, bg=BG)
+        inner.pack(fill="both", expand=True, padx=0)
         for index, item in enumerate(coll.get("items", []), start=1):
             line = tk.Frame(inner, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             line.pack(fill="x", pady=3)
@@ -1748,8 +1826,7 @@ class App:
                      bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
             if coll.get("is_owner"):
                 theme.RoundButton(line, "Убрать",
-                                  lambda m=item["mod_id"]: self.remove_from_collection(coll_id, m,
-                                                                                       window),
+                                  lambda m=item["mod_id"]: self.remove_from_collection(coll_id, m),
                                   height=28, radius=8, font=(FONT, 8)).pack(side="right", padx=8)
 
         history = coll.get("versions") or []
