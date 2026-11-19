@@ -3206,6 +3206,10 @@ class App:
         window.transient(self.root)
         tk.Label(window, text="На что жалуетесь?", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                  anchor="w").pack(fill="x", padx=18, pady=(14, 2))
+        tk.Label(window, text="Жалоба попадёт модераторам — раздел «Модерация» "
+                              "в настройках аккаунта.",
+                 bg=BG, fg=DIM, font=(FONT, CAPTION_PX), anchor="w",
+                 wraplength=420, justify="left").pack(fill="x", padx=18, pady=(0, 4))
         if title:
             tk.Label(window, text=title[:120], bg=BG, fg=DIM, font=(FONT, 9), anchor="w",
                      wraplength=420, justify="left").pack(fill="x", padx=18)
@@ -3256,6 +3260,13 @@ class App:
                               "box", compact=True).pack(pady=30)
             return
         counts = data.get("counts") or {}
+        actions = tk.Frame(page, bg=BG)
+        actions.pack(fill="x", pady=(0, 8))
+        reports_open = int(counts.get("reports_open", 0) or 0)
+        theme.RoundButton(
+            actions, f"Модерация и жалобы ({reports_open})", self.moderation_panel,
+            variant=("primary" if reports_open else "ghost"), height=34, radius=10,
+            font=(FONT_BOLD, BODY_PX, "bold")).pack(side="left")
         self._section(page, "Сводка", pady=(0, 6))
         self._stat_rows(page, [
             ("Модов в каталоге", counts.get("mods", 0)),
@@ -4022,6 +4033,20 @@ class App:
         self.toast("Мод добавлен в сборку", "ok")
         self.refresh_all()
 
+    ARCHIVE_REASONS = {
+        "not_zip": "это не ZIP-архив (RAR/7z нужно распаковать или поставить 7-Zip)",
+        "bad_zip": "архив повреждён или недокачан",
+        "empty": "архив пустой",
+        "unsafe_paths": "внутри архива небезопасные пути",
+        "unknown_layout": "нет папок vehicles/, levels/, ui/ и файла info.json — "
+                          "похоже, это не мод BeamNG.drive",
+    }
+
+    def _archive_reason(self, code: str) -> str:
+        """Человеческое объяснение, почему архив не приняли."""
+        base = code.split(":", 1)[0].strip()
+        return self.ARCHIVE_REASONS.get(base, "неизвестный формат")
+
     def render_inbox(self) -> None:
         frame = self._scrollable_frame()
         self._set_header_count("")
@@ -4078,9 +4103,11 @@ class App:
             info.pack(side="left", fill="x", expand=True)
             tk.Label(info, text=row.get("name"), bg=PANEL, fg=TEXT,
                      font=(FONT_BOLD, BODY_PX, "bold"), anchor="w").pack(fill="x")
-            tk.Label(info, text=f"{row.get('size_text')} · "
-                                f"{'мод' if row.get('valid') else 'не похоже на мод'}",
-                     bg=PANEL, fg=DIM, font=(FONT, CAPTION_PX), anchor="w").pack(fill="x")
+            reason = self._archive_reason(row.get("error") or "")
+            meta_text = (f"{row.get('size_text')} · мод" if row.get("valid")
+                         else f"{row.get('size_text')} · не похоже на мод: {reason}")
+            tk.Label(info, text=meta_text, bg=PANEL, fg=DIM, font=(FONT, CAPTION_PX),
+                     anchor="w", wraplength=520, justify="left").pack(fill="x")
             badges_needed = (not row.get("valid")) or already
             if badges_needed:
                 badges = tk.Frame(info, bg=PANEL)
@@ -4208,7 +4235,7 @@ class App:
                               border=LINE, border_hover=BORDER_STRONG,
                               font=(FONT, CAPTION_PX)).pack(side="left")
             if self.is_moderator():
-                theme.RoundButton(acc_actions, "Модерация", self.moderation_panel, height=30,
+                theme.RoundButton(acc_actions, "Модерация и жалобы", self.moderation_panel, height=30,
                                   radius=10, bg=PANEL, fg=TEXT, hover=SURFACE_3, border=LINE,
                                   border_hover=BORDER_STRONG,
                                   font=(FONT, CAPTION_PX)).pack(side="left", padx=8)
