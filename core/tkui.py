@@ -450,6 +450,17 @@ class App:
         """
         if clear:
             canvas.delete("all")
+        family = theme.icon_family()
+        glyph = theme.icon_glyph(kind)
+        if family and glyph:
+            try:
+                canvas.create_text(cx if cx is not None else size / 2,
+                                   cy if cy is not None else size / 2,
+                                   text=glyph, font=(family, -display.px(size)),
+                                   fill=color)
+                return
+            except tk.TclError:
+                pass
         try:
             width = max(canvas.winfo_width(), int(float(canvas.cget("width")) or 22))
             height = max(canvas.winfo_height(), int(float(canvas.cget("height")) or 30))

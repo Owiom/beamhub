@@ -7,10 +7,16 @@
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+from pathlib import Path
+
 from . import display, i18n
 
 import ctypes
 import sys
+from pathlib import Path
+from pathlib import Path
 import tkinter as tk
 from tkinter import font as tkfont
 
@@ -85,9 +91,31 @@ TYPE = {
 
 # Полужирный набираем весом 600: одно семейство на всё приложение, а не
 # отдельный «Segoe UI Semibold», который на Windows 11 не подхватывается.
+def _assets_dir() -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return base / "assets" / "fonts"
+
+
+def _register_bundled_fonts() -> None:
+    """Inter кладём рядом с приложением и регистрируем в системе для этого процесса."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    for name in ("Inter-Regular.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf"):
+        path = _assets_dir() / name
+        if path.exists():
+            try:
+                ctypes.windll.gdi32.AddFontResourceExW(str(path), 0x10, 0)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+_register_bundled_fonts()
+
 PREFERRED = (
+    "Inter",                    # комплектный шрифт BeamHub
     "Segoe UI Variable Text",   # Windows 11
-    "Segoe UI Variable",
     "Segoe UI",                 # Windows 10
     "Tahoma",
 )
@@ -194,16 +222,48 @@ _RESOLVED: tuple[str, str] | None = None
 
 
 def font_setup() -> tuple[str, str]:
-    """Вернуть (обычный, полужирный) шрифты для интерфейса."""
+    """Вернуть (обычный, полужирный) шрифты для интерфейса.
+
+    Жирный берём из классического Segoe UI: у него есть настоящий Bold,
+    а не синтетический, который на 4K выглядит «размазанным».
+    """
     global _RESOLVED
     base = pick_family(PREFERRED)
-    semibold = "Segoe UI Semibold"
-    if base.startswith("Segoe UI Variable"):
-        semibold = base
-    elif semibold.lower() not in _families():
-        semibold = base
-    _RESOLVED = (base, semibold)
-    return base, semibold
+    bold = pick_family(("Inter", "Segoe UI", "Segoe UI Variable Text", "Tahoma"))
+    _RESOLVED = (base, bold)
+    return base, bold
+
+
+ICON_PREFERRED = ("Segoe Fluent Icons", "Segoe MDL2 Assets", "Segoe UI Symbol")
+_ICON_FAMILY: str | None = None
+
+# коды глифов из Segoe Fluent Icons / Segoe MDL2 Assets
+ICONS = {
+    "grid": "\ue8a9",        # ViewAll
+    "layers": "\ue8b7",      # Folder
+    "book": "\ue8f1",        # Library
+    "arrow": "\ue895",       # Sync
+    "tray": "\ue896",        # Download
+    "gear": "\ue713",        # Setting
+    "search": "\ue721",      # Search
+    "star": "\ue734",        # FavoriteStar
+    "box": "\ue7b8",         # Package
+    "refresh": "\ue72c",     # Refresh
+}
+
+
+def icon_family() -> str:
+    """Семейство иконочного шрифта Windows (или пустая строка)."""
+    global _ICON_FAMILY
+    if _ICON_FAMILY is None:
+        available = _families()
+        _ICON_FAMILY = next((name for name in ICON_PREFERRED
+                             if name.lower() in available), "")
+    return _ICON_FAMILY
+
+
+def icon_glyph(kind: str) -> str:
+    return ICONS.get(kind, "")
 
 
 def ui_font(size: int = TYPE["body"], semibold: bool = False) -> tuple:
@@ -213,7 +273,7 @@ def ui_font(size: int = TYPE["body"], semibold: bool = False) -> tuple:
     семейства «Segoe UI Variable Semibold» в системе нет, а «Segoe UI Semibold»
     на Windows 11 выглядит как шрифт из прошлого десятилетия.
     """
-    base, bold = _RESOLVED or ("Segoe UI", "Segoe UI Semibold")
+    base, bold = _RESOLVED or ("Segoe UI", "Segoe UI")
     if semibold:
         return (bold, size, "bold")
     return (base, size)

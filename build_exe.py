@@ -76,6 +76,7 @@ def build(onefile: bool) -> Path:
         "--icon", str(ICON),
         "--add-data", f"{ROOT / 'web'};web",
         "--add-data", f"{SEED_DIR};seed",
+        "--add-data", f"{ROOT / 'assets'};assets",
         "--add-data", f"{ICON};.",
         "--collect-submodules", "core",
         "--exclude-module", "unittest",
