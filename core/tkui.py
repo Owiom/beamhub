@@ -268,6 +268,11 @@ class App:
         theme.RoundButton(actions, "＋ Ссылка", self.on_add_link, height=36, font=(FONT, 10),
                           bg=PANEL, fg=TEXT, hover=SURFACE_3, border=LINE,
                           border_hover=BORDER_STRONG).pack(side="right", padx=(0, 8))
+        self.fav_button = theme.RoundButton(actions, "★ Избранное", self.toggle_favorites,
+                                            height=36, font=(FONT, 10), bg=PANEL, fg=TEXT,
+                                            hover=SURFACE_3, border=LINE,
+                                            border_hover=BORDER_STRONG)
+        self.fav_button.pack(side="right", padx=(0, 8))
 
         tools = tk.Frame(self.head, bg=BG)
         tools.pack(fill="x", pady=(16, 0))
@@ -338,7 +343,7 @@ class App:
         self.filter_chips: dict[str, object] = {}
         for text, var, key in (("0.40.x", self.filter_game, "game"),
                                ("с обложкой", self.filter_image, "image"),
-                               ("избранное", self.filter_fav, "fav")):
+                               ):
             chip = theme.RoundButton(filters, text, lambda v=var, k=key: self._toggle_chip(v, k),
                                      height=28, radius=14, bg=SURFACE_2, fg=MUTED,
                                      hover=SURFACE_3, font=(FONT, 9), border=LINE,
@@ -609,6 +614,22 @@ class App:
     # ---------------------------------------------------------------- язык
     def _lang_label(self) -> str:
         return "EN" if i18n.current() == "ru" else "RU"
+
+    def toggle_favorites(self) -> None:
+        """Отдельная кнопка фильтра избранного."""
+        self.filter_fav.set(not self.filter_fav.get())
+        self._paint_fav_button()
+        self.reload()
+
+    def _paint_fav_button(self) -> None:
+        try:
+            active = bool(self.filter_fav.get())
+            self.fav_button.configure(text="★ Избранное: вкл" if active else "★ Избранное")
+            self.fav_button.set_palette(bg=(ACCENT_SOFT if active else PANEL),
+                                        fg=(ACCENT_SOFT_TEXT if active else TEXT),
+                                        hover=(SURFACE_3 if not active else ACCENT_SOFT))
+        except Exception:  # noqa: BLE001
+            pass
 
     def toggle_language(self) -> None:
         self.set_language("en" if i18n.current() == "ru" else "ru")
@@ -1184,7 +1205,8 @@ class App:
         base.paste(image, (0, 0), mask)
         return base
 
-    def _set_placeholder(self, label: tk.Label, item: dict) -> None:
+    def _set_placeholder(self, label: tk.Label, item: dict,
+                         size: tuple[int, int] | None = None) -> None:
         """Заглушка вместо обложки: две буквы названия на плашке категории."""
         if not HAS_PIL:
             label.configure(text=(item.get("title") or "")[:24], fg=MUTED, font=(FONT, 9))
@@ -1266,8 +1288,8 @@ class App:
                 self.root.after(0, lambda: self.set_status(f"Ошибка: {exc}"))
         threading.Thread(target=work, daemon=True).start()
 
-    def details(self, item: dict) -> None:
-        window = self._show_page(item.get("title") or "Мод")
+    def details(self, item: dict, back=None) -> None:
+        window = self._show_page(item.get("title") or "Мод", back=back)
         if item.get("image"):
             holder = tk.Frame(window, bg=PANEL, height=240)
             holder.pack(fill="x", pady=(0, 8))
@@ -1390,24 +1412,25 @@ class App:
             tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
             return
         cards = tk.Frame(page, bg=BG)
-        cards.pack(fill="x", pady=(0, 12))
+        cards.pack(fill="x", pady=(6, 12))
         numbers = (
-            ("Пользователи", data.get("users", 0)),
-            ("Активны за 7 дней", data.get("active_users_7d", 0)),
-            ("Сборки", data.get("collections", 0)),
-            ("Установки", data.get("installs", 0)),
-            ("Просмотры", data.get("views", 0)),
-            ("Комментарии", data.get("comments", 0)),
-            ("Оценки", data.get("ratings", 0)),
+            ("пользователи", data.get("collections", 0)),
+            ("активны за 7 дней", data.get("users", 0)),
+            ("сборки", data.get("active_users_7d", 0)),
+            ("просмотры", data.get("views", 0)),
+            ("установки", data.get("installs", 0)),
+            ("отзывы", data.get("comments", 0)),
+            ("оценки", data.get("ratings", 0)),
         )
         for index, (label, value) in enumerate(numbers):
-            cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
-            cell.grid(row=0, column=index, sticky="nsew", padx=(0, 6))
-            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 18),
-                     anchor="w").pack(fill="x", padx=12, pady=(10, 0))
-            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 9),
-                     anchor="w").pack(fill="x", padx=12, pady=(0, 10))
-            cards.grid_columnconfigure(index, weight=1)
+            if index:
+                tk.Frame(cards, bg=LINE, width=1, height=34).pack(side="left", padx=18)
+            cell = tk.Frame(cards, bg=BG)
+            cell.pack(side="left")
+            tk.Label(cell, text=str(value), bg=BG, fg=TEXT, font=(FONT_BOLD, 18),
+                     anchor="w").pack(anchor="w")
+            tk.Label(cell, text=label, bg=BG, fg=DIM, font=(FONT, 9),
+                     anchor="w").pack(anchor="w")
 
         def section(title: str) -> None:
             tk.Label(page, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 13),
@@ -1623,8 +1646,38 @@ class App:
             menu.grab_release()
 
     def _menu_my_collections(self) -> None:
-        self.switch("collections")
-        self.set_coll_kind("mine")
+        page = self._show_page("Мои сборки", back=self.my_profile)
+        try:
+            data = self.api.get("/api/collections", kind="mine", limit=60)
+        except Exception as exc:  # noqa: BLE001
+            tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+            return
+        items = data.get("items", [])
+        top = tk.Frame(page, bg=BG)
+        top.pack(fill="x", pady=(0, 10))
+        theme.RoundButton(top, "＋ Создать сборку", self.create_collection,
+                          variant="primary", height=34, radius=10,
+                          font=(FONT_BOLD, 10)).pack(side="left")
+        tk.Label(top, text=f"{len(items)} сборок", bg=BG, fg=MUTED, font=(FONT, 10)).pack(
+            side="left", padx=12)
+        if not items:
+            tk.Label(page, text="Пока пусто — создайте первую сборку.", bg=BG, fg=DIM,
+                     font=(FONT, 10), anchor="w").pack(fill="x")
+        for coll in items:
+            row = tk.Frame(page, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            row.pack(fill="x", pady=3)
+            rating = coll.get("rating") or {}
+            tk.Label(row, text=coll.get("title") or "сборка", bg=PANEL, fg=TEXT,
+                     font=(FONT_BOLD, 12), anchor="w").pack(side="left", fill="x",
+                                                            expand=True, padx=14, pady=10)
+            state = "опубликована" if coll.get("published") else "черновик"
+            tk.Label(row, text=f"{coll.get('items_count', 0)} модов · ★ "
+                               f"{float(rating.get('avg') or 0):.1f} "
+                               f"({rating.get('count', 0)}) · {state}",
+                     bg=PANEL, fg=DIM, font=(FONT, 9)).pack(side="left", padx=8)
+            theme.RoundButton(row, "Открыть",
+                              lambda c=coll["id"]: self.collection_details(c),
+                              height=30, radius=8, font=(FONT, 9)).pack(side="right", padx=12)
 
     def my_profile(self) -> None:
         page = self._show_page("Мой профиль")
@@ -1639,8 +1692,24 @@ class App:
 
         head = tk.Frame(page, bg=BG)
         head.pack(fill="x", pady=(0, 10))
-        tk.Label(head, text=(nick[:1] or "?").upper(), bg=ACCENT, fg="#111318",
-                 font=(FONT_BOLD, 20), width=2).pack(side="left")
+        avatar_holder = tk.Frame(head, bg=PANEL, width=72, height=72)
+        avatar_holder.pack(side="left")
+        avatar_holder.pack_propagate(False)
+        avatar_label = tk.Label(avatar_holder, bg=PANEL, fg=ACCENT, font=(FONT_BOLD, 24),
+                                text=(nick[:1] or "?").upper())
+        avatar_label.pack(fill="both", expand=True)
+        if user.get("avatar_url"):
+            try:
+                from PIL import Image, ImageTk
+
+                file = Path(config.DATA_DIR) / str(user["avatar_url"])
+                with Image.open(file) as image:
+                    image = image.convert("RGB").resize((72, 72), Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(image)
+                avatar_label.configure(image=photo, text="")
+                avatar_label.image = photo
+            except Exception:  # noqa: BLE001
+                pass
         names = tk.Frame(head, bg=BG)
         names.pack(side="left", padx=12)
         tk.Label(names, text=nick, bg=BG, fg=TEXT, font=(FONT_BOLD, 22),
@@ -1653,27 +1722,55 @@ class App:
         tk.Label(names, text=meta, bg=BG, fg=DIM, font=(FONT, 10), anchor="w").pack(fill="x")
 
         cards = tk.Frame(page, bg=BG)
-        cards.pack(fill="x", pady=(4, 10))
+        cards.pack(fill="x", pady=(6, 12))
         numbers = (
-            ("Сборки", stats.get("collections", 0)),
-            ("Подписчики", user.get("followers", 0)),
-            ("Подписки", user.get("following", 0)),
-            ("Просмотры", stats.get("views", 0)),
-            ("Установки", stats.get("installs", 0)),
-            ("Отзывы", stats.get("comments", 0)),
-            ("Оценки", stats.get("ratings", 0)),
+            ("сборки", stats.get("collections", 0)),
+            ("подписчики", user.get("followers", 0)),
+            ("подписки", user.get("following", 0)),
+            ("просмотры", stats.get("views", 0)),
+            ("установки", stats.get("installs", 0)),
+            ("отзывы", stats.get("comments", 0)),
+            ("оценки", stats.get("ratings", 0)),
         )
         for index, (label, value) in enumerate(numbers):
-            cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
-            cell.grid(row=0, column=index, sticky="nsew", padx=(0, 6))
-            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 16),
-                     anchor="w").pack(fill="x", padx=12, pady=(10, 0))
-            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 9),
-                     anchor="w").pack(fill="x", padx=12, pady=(0, 10))
-            cards.grid_columnconfigure(index, weight=1)
+            if index:
+                tk.Frame(cards, bg=LINE, width=1, height=34).pack(side="left", padx=18)
+            cell = tk.Frame(cards, bg=BG)
+            cell.pack(side="left")
+            tk.Label(cell, text=str(value), bg=BG, fg=TEXT, font=(FONT_BOLD, 18),
+                     anchor="w").pack(anchor="w")
+            tk.Label(cell, text=label, bg=BG, fg=DIM, font=(FONT, 9),
+                     anchor="w").pack(anchor="w")
 
         actions = tk.Frame(page, bg=BG)
         actions.pack(fill="x", pady=(0, 12))
+        def change_avatar() -> None:
+            picked = filedialog.askopenfilename(
+                title="Фото профиля",
+                filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp")])
+            if not picked:
+                return
+            try:
+                folder = Path(config.DATA_DIR) / "avatars"
+                folder.mkdir(parents=True, exist_ok=True)
+                name = f"{self.user['id']}.png"
+                from PIL import Image
+
+                with Image.open(picked) as image:
+                    image.convert("RGB").resize((128, 128), Image.LANCZOS).save(
+                        folder / name, "PNG")
+            except Exception as exc:  # noqa: BLE001
+                self.toast(f"Не удалось: {exc}", "error")
+                return
+            result = self.api.post("/api/profile", {"avatar_url": f"avatars/{name}"})
+            if not result.get("ok"):
+                self.toast(result.get("error", "Не получилось"), "error")
+                return
+            self.toast("Фото обновлено", "ok")
+            self.my_profile()
+
+        theme.RoundButton(actions, "Сменить фото", change_avatar, height=34, radius=10,
+                          font=(FONT, 10)).pack(side="left", padx=(0, 8))
         theme.RoundButton(actions, "＋ Создать сборку", self.create_collection,
                           variant="primary", height=34, radius=10,
                           font=(FONT_BOLD, 10)).pack(side="left")
@@ -2156,7 +2253,16 @@ class App:
                                                                        pady=(4, 4))
         inner = tk.Frame(window, bg=BG)
         inner.pack(fill="both", expand=True, padx=0)
-        for index, item in enumerate(coll.get("items", []), start=1):
+        items = coll.get("items", [])
+        catalog: dict = {}
+        if items:
+            try:
+                ids = ",".join(item["mod_id"] for item in items[:120])
+                data = self.api.get("/api/mods/by-ids", ids=ids)
+                catalog = {row["id"]: row for row in data.get("items", [])}
+            except Exception:  # noqa: BLE001
+                catalog = {}
+        for index, item in enumerate(items, start=1):
             line = tk.Frame(inner, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             line.pack(fill="x", pady=3)
             mark = "✓" if item["mod_id"] in installed else str(index)
@@ -2167,6 +2273,19 @@ class App:
             info.pack(side="left", fill="x", expand=True, pady=6)
             tk.Label(info, text=item.get("title") or item["mod_id"], bg=PANEL, fg=TEXT,
                      font=(FONT, 10), anchor="w").pack(fill="x")
+            mod_item = catalog.get(item["mod_id"])
+            if mod_item is not None:
+                box = tk.Frame(line, bg="#0a0b0e", width=96, height=54)
+                box.pack(side="left", padx=(8, 6), pady=6, before=info)
+                box.pack_propagate(False)
+                thumb = tk.Label(box, bg="#0a0b0e", bd=0, text="")
+                thumb.pack(fill="both", expand=True)
+                self._set_placeholder(thumb, mod_item, (96, 54))
+                if mod_item.get("image"):
+                    self._request_image(mod_item["image"], thumb, mod_item)
+                self._bind_click_tree(
+                    line, lambda m=mod_item, c=coll_id: self.details(
+                        m, back=lambda: self.collection_details(c)))
             tk.Label(info, text=f"{item.get('category') or ''} · {item.get('size_text') or ''}",
                      bg=PANEL, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
             if coll.get("is_owner"):

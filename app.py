@@ -370,6 +370,20 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/state":
                 self._json(state_payload())
                 return
+            if path == "/api/mods/by-ids":
+                ids = [part for part in (query.get("ids") or [""])[0].split(",")
+                       if part.strip()][:120]
+                if not ids:
+                    self._json({"ok": True, "items": []})
+                    return True
+                marks = ",".join("?" for _ in ids)
+                rows = db.query(
+                    f"SELECT id, title, image, category, version, game_version, size_text, "
+                    f"downloads, url, source, author FROM mods WHERE id IN ({marks})", ids)
+                by_id = {row["id"]: row for row in rows}
+                items = [by_id[mod_id] for mod_id in ids if mod_id in by_id]
+                self._json({"ok": True, "items": items})
+                return True
             if path == "/api/mods":
                 q = (query.get("q") or [""])[0].strip()
                 category = (query.get("cat") or ["all"])[0]

@@ -103,6 +103,38 @@ def fetch(url: str, referer: str | None = None, timeout: int = 30, retries: int 
     raise RuntimeError(f"Не удалось загрузить {url}: {last_error}")
 
 
+
+def _fetch_with_curl(url: str, referer: str | None, timeout: int) -> bytes:
+    """Запасной путь: системный curl — он тянет медленные сайты стабильнее."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    curl = shutil.which("curl.exe") or shutil.which("curl")
+    if not curl:
+        raise RuntimeError("curl недоступен")
+    handle, temp_path = tempfile.mkstemp(suffix=".bin")
+    os.close(handle)
+    try:
+        command = [curl, "-sSL", "--max-time", str(timeout), "-A", UA, "-o", temp_path]
+        if referer:
+            command += ["-H", f"Referer: {referer}"]
+        command.append(url)
+        subprocess.run(command, check=True, timeout=timeout + 5,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        data = Path(temp_path).read_bytes()
+        if not data:
+            raise RuntimeError("curl вернул пустой ответ")
+        return data
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+
 def fetch_bytes(url: str, referer: str | None = None, timeout: int = 40,
                 safe: bool = False) -> bytes:
     """Забрать двоичные данные. safe=True — только публичные адреса и без SSRF-редиректов."""
@@ -121,11 +153,15 @@ def fetch_bytes(url: str, referer: str | None = None, timeout: int = 40,
         headers["Referer"] = referer
     request = urllib.request.Request(url, headers=headers)
     opener = urllib.request.build_opener(_SafeRedirect()) if safe else urllib.request.build_opener()
-    with opener.open(request, timeout=timeout) as resp:
-        raw = resp.read()
-        if (resp.headers.get("Content-Encoding") or "").lower() == "gzip":
-            raw = gzip.decompress(raw)
-        return raw
+    try:
+        with opener.open(request, timeout=min(timeout, 20)) as resp:
+            raw = resp.read()
+            if (resp.headers.get("Content-Encoding") or "").lower() == "gzip":
+                raw = gzip.decompress(raw)
+            return raw
+    except Exception as exc:  # noqa: BLE001
+        print(f"[beamhub] urllib не смог, пробую curl: {exc}")
+        return _fetch_with_curl(url, referer, timeout)
 
 
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
