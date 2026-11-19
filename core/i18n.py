@@ -11,6 +11,29 @@ LANG = "ru"
 
 # точные совпадения: строки интерфейса
 EN: dict[str, str] = {
+    # страница мода и совместимость
+    "Версия игры": "Game version",
+    "Версия мода": "Mod version",
+    "Размер": "Size",
+    "Скачиваний": "Downloads",
+    "Добавлен": "Added",
+    "Конфликты": "Conflicts",
+    "Совместимость": "Compatibility",
+    "не указана": "not specified",
+    "не указано": "not specified",
+    "не определено": "not detected",
+    "Конфликтов с установленными модами не найдено":
+        "No conflicts with installed mods found",
+    "Оценок пока нет": "No ratings yet",
+    "Отзывы и комментарии": "Reviews and comments",
+    "Обсуждение": "Discussion",
+    "Ответить": "Reply",
+    "Отправить": "Send",
+    "Отмена": "Cancel",
+    "Войдите, чтобы писать": "Sign in to post",
+    "Напишите сообщение": "Write a message",
+    "Пожаловаться": "Report",
+    "Поделиться": "Share",
     # навигация и заголовки
     "Каталог": "Catalog",
     "Моды, поставленные до BeamHub, привязываются к каталогу по названию и размеру — так для них работают обновления.":
@@ -287,6 +310,24 @@ RULES: list[tuple[str, str]] = [
 
 
 SUBS: list[tuple[str, str]] = [
+    ("Машины", "Cars"),
+    ("Карты", "Maps"),
+    ("Инструменты", "Tools"),
+    ("Самолёты", "Planes"),
+    ("Мотоциклы", "Bikes"),
+    ("Корабли", "Boats"),
+    ("Другое", "Other"),
+    ("Файл", "File"),
+    ("файл отвечает", "file is valid"),
+    ("с установленными модами не найдено", "with installed mods — none found"),
+    ("Версия игры", "Game version"),
+    ("Версия мода", "Mod version"),
+    ("заявлено", "declared"),
+    ("не определено", "not detected"),
+    ("не указано", "not specified"),
+    ("не указана", "not specified"),
+    ("Конфликтов с установленными модами не найдено",
+     "No conflicts with installed mods found"),
     (" дн назад", " d ago"),
     (" ч назад", " h ago"),
     (" мин назад", " min ago"),

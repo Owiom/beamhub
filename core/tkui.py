@@ -1776,6 +1776,7 @@ class App:
         extras.pack(fill="x")
         threading.Thread(target=self._details_extras, args=(page, extras, item),
                          daemon=True).start()
+        self._translate_ui(page)
 
     # ---------------------------------------------------------------- доп. сведения
     def _details_extras(self, window: tk.Misc, frame: tk.Frame, item: dict) -> None:
