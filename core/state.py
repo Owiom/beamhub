@@ -79,6 +79,12 @@ class Hub:
         self._open_next_sequence()
         return len(mods)
 
+    def reset_sequence(self) -> None:
+        """Остановить последовательное скачивание."""
+        with self.lock:
+            self.sequence = []
+            self.pending = None
+
     def _open_next_sequence(self) -> None:
         from .providers import resolve_download
 
@@ -208,7 +214,7 @@ class Hub:
             self.emit("installed", f"Установлено: {title}", mod_id=(mod or {}).get("id"),
                       filename=result["installed"]["filename"])
             self.clear_pending()
-            if self.sequence:
+            if pending and self.sequence:
                 self._open_next_sequence()
             try:
                 from . import matcher
@@ -220,7 +226,7 @@ class Hub:
         if result["status"] == "duplicate":
             self.emit("duplicate", f"«{path.stem}» уже установлен — пропустил.", mod_id=(mod or {}).get("id"))
             self.clear_pending()
-            if self.sequence:
+            if pending and self.sequence:
                 self._open_next_sequence()
             return True
         self.emit("error", f"Не удалось установить «{path.name}»: {result.get('message', '')}")

@@ -1127,6 +1127,7 @@ class Handler(BaseHTTPRequestHandler):
             if not missing:
                 self._json({"ok": True, "opened": 0, "message": "Вся сборка уже установлена."})
                 return True
+            HUB.reset_sequence()
             from core.providers import resolve_download
 
             opened = 0
@@ -1173,6 +1174,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "queued": 0,
                             "message": "Вся сборка уже установлена."})
                 return True
+
+            HUB.reset_sequence()
 
             def worker() -> None:
                 done, failed = 0, 0
@@ -1439,8 +1442,10 @@ def download_and_install(mod: dict) -> dict:
     if not url:
         return {"status": "failed", "error": "нет ссылки"}
     cfg = config.load()
-    target = Path(cfg.get("downloads_dir") or Path.home() / "Downloads") / (
-        (mod.get("title") or "mod")[:80].replace("/", "_").replace("\\", "_") + ".zip")
+    workdir = Path(config.DATA_DIR) / "tmp"
+    workdir.mkdir(parents=True, exist_ok=True)
+    target = workdir / ((mod.get("title") or "mod")[:80].replace("/", "_")
+                        .replace("\\", "_") + ".zip")
     try:
         import urllib.request
 
