@@ -18,7 +18,7 @@ import urllib.request
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import cloud, cloud_defaults, config, i18n, theme
+from . import cloud, cloud_defaults, config, display, i18n, theme
 from .version import VERSION
 from .util import (CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date, human_size,
                     title_key)
@@ -56,9 +56,9 @@ FONT = "Segoe UI"          # в App.__init__ подменится на Segoe UI 
 FONT_BOLD = "Segoe UI Semibold"
 
 # Единая сетка экранов 2026: поля окна 16, секции 18, строки 32–64.
-PAGE_PAD = 16
-SECTION_GAP = 16
-ROW_GAP = 4
+PAGE_PAD = display.px(16)
+SECTION_GAP = display.px(16)
+ROW_GAP = display.px(4)
 TITLE_PX = 22
 SECTION_PX = 13
 LEAD_PX = 11
@@ -67,13 +67,13 @@ CAPTION_PX = 9
 
 # Карточка 2026: картинка строго 16:9, одинаковая высота у всех карточек,
 # скругление только сверху — низ упирается в текстовый блок.
-IMG_W, IMG_H = 288, 162
-IMG_RADIUS = 14
-CARD_PAD = 8
+IMG_W, IMG_H = display.px(288), display.px(162)
+IMG_RADIUS = display.px(14)
+CARD_PAD = display.px(8)
 CARD_W = IMG_W
-CARD_GAP = 12
-SIDEBAR_W = 264
-NAV_H = 40
+CARD_GAP = display.px(12)
+SIDEBAR_W = display.px(264)
+NAV_H = display.px(40)
 
 try:
     from PIL import Image, ImageOps, ImageTk
@@ -168,8 +168,9 @@ class App:
         self.coll_kind = "popular"
 
         root.title(f"BeamHub {VERSION} — каталог модов BeamNG.drive")
-        root.geometry("1400x920")
-        root.minsize(1180, 720)
+        root.tk.call("tk", "scaling", display.ui_scale() * 96.0 / 72.0)
+        root.geometry(f"{display.px(1400)}x{display.px(920)}")
+        root.minsize(display.px(1180), display.px(720))
         root.configure(bg=BG)
         global FONT, FONT_BOLD
         FONT, FONT_BOLD = theme.font_setup()
@@ -1465,7 +1466,7 @@ class App:
         duplicate = bool(item.get("duplicate"))
         outer = theme.RoundedFrame(parent, radius=16, fill=PANEL,
                                    border=(DUP_LINE if duplicate else LINE_SOFT),
-                                   padding=8, width=IMG_W + 18)
+                                   padding=8, width=IMG_W + display.px(18))
         card = outer.body
         holder = tk.Frame(card, bg=PANEL, width=IMG_W, height=IMG_H)
         holder.pack(fill="x")
@@ -1677,7 +1678,9 @@ class App:
                          radius: int | None = None) -> None:
         """Заглушка вместо обложки: две буквы имени на плашке категории."""
         size = size or (IMG_W, IMG_H)
-        radius = (IMG_RADIUS if size == (IMG_W, IMG_H) else 10) if radius is None else radius
+        size = (display.px(size[0]), display.px(size[1]))
+        radius = (IMG_RADIUS if size == (IMG_W, IMG_H) else display.px(10)) \
+            if radius is None else display.px(radius)
         title = (item.get("title") or "?").strip()
         letters = "".join(part[0] for part in title.split()[:2]).upper() or "?"
         colors = {"cars": (255, 122, 26), "maps": (60, 160, 220), "tools": (120, 200, 130),

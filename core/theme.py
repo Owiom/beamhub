@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from . import i18n
+from . import display, i18n
 
 import ctypes
 import sys
@@ -290,7 +290,7 @@ class RoundButton(tk.Canvas):
         super().__init__(parent, highlightthickness=0, bd=0, bg=parent_bg, **kwargs)
         self._text = text
         self._command = command
-        self._radius = radius
+        self._radius = display.px(radius) if radius is not None else None
         self._variant = "primary" if variant == "primary" else "ghost"
         self._bg = bg or base["bg"]
         self._fg = fg or base["fg"]
@@ -307,7 +307,9 @@ class RoundButton(tk.Canvas):
         self._border_hover = border_hover
         self._state = "normal"
         self._hovered = False
-        self.configure(height=height, width=width or max(90, self._measure() + 34))
+        self.configure(height=display.px(height),
+                       width=(display.px(width) if width
+                              else max(display.px(90), self._measure() + display.px(34))))
         self._draw()
         for event, handler in (("<Enter>", self._on_enter), ("<Leave>", self._on_leave),
                                ("<Button-1>", self._on_press),
@@ -327,8 +329,8 @@ class RoundButton(tk.Canvas):
 
         Старые вызовы с radius=8 не выпадают из системы: минимум — RADIUS_SM.
         """
-        radius = RADIUS if self._radius is None else self._radius
-        radius = max(RADIUS_SM, min(radius, RADIUS_LG))
+        radius = display.px(RADIUS if self._radius is None else self._radius)
+        radius = max(display.px(RADIUS_SM), min(radius, display.px(RADIUS_LG)))
         return max(2, min(radius, height // 2 - 1))
 
     def _palette(self) -> tuple[str, str, str]:
@@ -614,6 +616,8 @@ class RoundedFrame(tk.Canvas):
 
     def __init__(self, parent: tk.Misc, *, radius: int = 14, fill: str = "#15171e",
                  border: str = "#242832", padding: int = 1, **kwargs) -> None:
+        radius = display.px(radius)
+        padding = display.px(padding)
         super().__init__(parent, highlightthickness=0, bd=0, bg=parent["bg"], **kwargs)
         self._radius = radius
         self._fill = fill
