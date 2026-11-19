@@ -51,7 +51,8 @@ def _pick_mods(words: tuple[str, ...], limit: int = 10) -> list[str]:
         like = f"%{word.lower()}%"
         params.extend([like, like])
     rows = db.query(
-        f"SELECT id FROM mods WHERE ({clauses}) ORDER BY downloads DESC LIMIT ?",
+        f"SELECT id FROM mods WHERE ({clauses}) AND source <> 'playground' "
+        f"ORDER BY downloads DESC LIMIT ?",
         [*params, limit])
     return [row["id"] for row in rows]
 
@@ -59,6 +60,7 @@ def _pick_mods(words: tuple[str, ...], limit: int = 10) -> list[str]:
 def ensure() -> int:
     """Создаёт официальные сборки, если их ещё нет. Возвращает число созданных."""
     team = _ensure_team_user()
+    cleanup_torrents()
     existing = {row["title"] for row in db.query(
         "SELECT title FROM collections WHERE owner_id=?", (team,))}
     created = 0
@@ -84,3 +86,53 @@ def ensure() -> int:
                 (coll_id, mod_id, index, "", now))
         created += 1
     return created
+
+
+def cleanup_torrents() -> int:
+    """Убирает из официальных подборок моды с торрент-источника и добирает замену."""
+    team = db.query_one("SELECT id FROM users WHERE email=?", (OFFICIAL_EMAIL,))
+    if not team:
+        return 0
+    removed = 0
+    for title, _category, _tags, words in OFFICIAL:
+        coll = db.query_one("SELECT id FROM collections WHERE owner_id=? AND title=?",
+                            (team["id"], title))
+        if not coll:
+            continue
+        rows = db.query(
+            "SELECT ci.mod_id FROM collection_items ci JOIN mods m ON m.id = ci.mod_id "
+            "WHERE ci.collection_id=? AND m.source='playground'", (coll["id"],))
+        if not rows:
+            continue
+        db.execute(
+            "DELETE FROM collection_items WHERE collection_id=? AND mod_id IN ("
+            "SELECT id FROM mods WHERE source='playground')", (coll["id"],))
+        removed += len(rows)
+        have = db.query_one(
+            "SELECT COUNT(*) AS c FROM collection_items WHERE collection_id=?",
+            (coll["id"],))["c"]
+        if have < 8:
+            taken = {row["mod_id"] for row in db.query(
+                "SELECT mod_id FROM collection_items WHERE collection_id=?", (coll["id"],))}
+            fill = db.query(
+                "SELECT id FROM mods WHERE category=? AND source <> 'playground' "
+                "ORDER BY downloads DESC LIMIT 40", (_category,))
+            for mod_id in [row["id"] for row in fill if row["id"] not in taken]:
+                if have >= 8:
+                    break
+                db.execute(
+                    "INSERT OR IGNORE INTO collection_items(collection_id,mod_id,position,note,"
+                    "added_at) VALUES(?,?,?,?,?)",
+                    (coll["id"], mod_id, have, "", now_ts()))
+                have += 1
+        if have < 10:
+            extra = [mod_id for mod_id in _pick_mods(words, 20)
+                     if mod_id not in {row["mod_id"] for row in db.query(
+                         "SELECT mod_id FROM collection_items WHERE collection_id=?",
+                         (coll["id"],))}]
+            for index, mod_id in enumerate(extra[:10 - have]):
+                db.execute(
+                    "INSERT OR IGNORE INTO collection_items(collection_id,mod_id,position,note,"
+                    "added_at) VALUES(?,?,?,?,?)",
+                    (coll["id"], mod_id, have + index, "", now_ts()))
+    return removed

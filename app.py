@@ -1389,6 +1389,15 @@ def bootstrap() -> None:
     config.load()
     db.init()
     try:
+        if db.get_meta("torrent_purged") != "1":
+            removed = db.query("SELECT COUNT(*) AS c FROM mods WHERE source='playground'")[0]["c"]
+            db.execute("DELETE FROM mods WHERE source='playground'")
+            db.set_meta("torrent_purged", "1")
+            if removed:
+                print(f"[beamhub] удалено торрент-модов: {removed}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[beamhub] torrent purge: {exc}")
+    try:
         created = official.ensure()
         if created:
             print(f"[beamhub] официальных сборок добавлено: {created}")

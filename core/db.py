@@ -324,7 +324,7 @@ def get_mod(mod_id: str) -> dict | None:
 
 def count_mods() -> int:
     with _lock:
-        return _db().execute("SELECT COUNT(*) c FROM mods").fetchone()["c"]
+        return _db().execute("SELECT COUNT(*) c FROM mods WHERE source NOT IN ('playground')").fetchone()["c"]
 
 
 def pending_enrich(limit: int = 5000, max_age: int = 60 * 60 * 24 * 30) -> list[str]:
@@ -342,7 +342,7 @@ def pending_enrich(limit: int = 5000, max_age: int = 60 * 60 * 24 * 30) -> list[
 def query_mods(q: str = "", category: str = "", source: str = "", sort: str = "new",
                offset: int = 0, limit: int = 60, enriched_only: bool = False,
                game: str = "", has_image: bool = False, favorites_only: bool = False) -> dict:
-    where = []
+    where = ["source NOT IN ('playground')"]
     params: list = []
     if q:
         where.append("(title LIKE ? OR description LIKE ? OR author LIKE ?)")
@@ -383,7 +383,7 @@ def query_mods(q: str = "", category: str = "", source: str = "", sort: str = "n
 
 def category_counts() -> dict:
     with _lock:
-        rows = _db().execute("SELECT category, COUNT(*) c FROM mods GROUP BY category").fetchall()
+        rows = _db().execute("SELECT category, COUNT(*) c FROM mods WHERE source NOT IN ('playground') GROUP BY category").fetchall()
     return {r["category"]: r["c"] for r in rows}
 
 
@@ -423,7 +423,7 @@ def installed_add(entry: dict) -> None:
 
 def source_counts() -> dict:
     with _lock:
-        rows = _db().execute("SELECT source, COUNT(*) c FROM mods GROUP BY source").fetchall()
+        rows = _db().execute("SELECT source, COUNT(*) c FROM mods WHERE source NOT IN ('playground') GROUP BY source").fetchall()
     return {r["source"]: r["c"] for r in rows}
 
 
@@ -576,8 +576,10 @@ def installed_for_mod(mod_id: str) -> list[dict]:
 def stats() -> dict:
     with _lock:
         db = _db()
-        mods = db.execute("SELECT COUNT(*) c FROM mods").fetchone()["c"]
-        enriched = db.execute("SELECT COUNT(*) c FROM mods WHERE enriched_at>0").fetchone()["c"]
+        mods = db.execute("SELECT COUNT(*) c FROM mods "
+                          "WHERE source NOT IN ('playground')").fetchone()["c"]
+        enriched = db.execute("SELECT COUNT(*) c FROM mods WHERE enriched_at>0 "
+                              "AND source NOT IN ('playground')").fetchone()["c"]
         inst = db.execute("SELECT COUNT(*) c FROM installed").fetchone()["c"]
         size = db.execute("SELECT COALESCE(SUM(size),0) s FROM installed").fetchone()["s"]
     return {"mods": mods, "enriched": enriched, "installed": inst, "installed_bytes": size}

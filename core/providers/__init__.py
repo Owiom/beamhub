@@ -1,22 +1,20 @@
 """Реестр провайдеров каталога."""
 from __future__ import annotations
 
-from . import beamngland, beamngmods, generic, modsgaming, playground
+from . import beamngland, beamngmods, generic, modsgaming
 
 PROVIDERS = {
     modsgaming.SOURCE: modsgaming,
-    playground.SOURCE: playground,
     beamngland.SOURCE: beamngland,
     beamngmods.SOURCE: beamngmods,
     generic.SOURCE: generic,
 }
 
 # Провайдеры с массовым каталогом (синхронизация из sitemap/категорий).
-CATALOG_PROVIDERS = [modsgaming, playground, beamngland, beamngmods]
+CATALOG_PROVIDERS = [modsgaming, beamngland, beamngmods]
 
 SOURCE_LABELS = {
     "modsgaming": "modsgaming.ru",
-    "playground": "playground.ru",
     "beamngland": "beamngland.com",
     "beamngmods": "beamngmods.net",
     "link": "по ссылке",
