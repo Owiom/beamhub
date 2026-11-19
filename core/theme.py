@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+from . import i18n
+
 import ctypes
 import sys
 import tkinter as tk
@@ -507,7 +509,7 @@ class AvatarButton(tk.Canvas):
 
     def _fit_text(self) -> str:
         limit = self._max_width - self._height - 34
-        text = self._text
+        text = i18n.tr(self._text)
         if self._measured(text) <= limit:
             return text
         while text and self._measured(text + "…") > limit:

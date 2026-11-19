@@ -391,7 +391,7 @@ class Handler(BaseHTTPRequestHandler):
                 source = (query.get("source") or ["all"])[0]
                 sort = (query.get("sort") or ["new"])[0]
                 offset = _safe_int((query.get("offset") or ["0"])[0])
-                limit = min(120, _safe_int((query.get("limit") or ["48"])[0], 48))
+                limit = max(1, min(120, _safe_int((query.get("limit") or ["48"])[0], 48)))
                 game = (query.get("game") or [""])[0]
                 has_image = (query.get("img") or ["0"])[0] == "1"
                 favorites_only = (query.get("fav") or ["0"])[0] == "1"
@@ -709,13 +709,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not viewer:
                     return True
                 result = collections.list_collections(kind, viewer_id=viewer["id"],
-                                                      limit=min(60, _safe_int(arg("limit", "24"), 24)))
+                                                      limit=max(1, min(60, _safe_int(arg("limit", "24"), 24))))
                 self._json(result)
                 return True
             result = collections.list_collections(
                 kind=kind if kind in ("new", "popular", "rating") else "popular",
                 query=arg("q"), category=arg("cat"),
-                limit=min(60, _safe_int(arg("limit", "24"), 24)),
+                limit=max(1, min(60, _safe_int(arg("limit", "24"), 24))),
                 offset=_safe_int(arg("offset", "0"), 0))
             self._json(result)
             return True
@@ -854,7 +854,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/recommend/mods":
             mod_id = arg("id")
             if mod_id:
-                self._json(recommend.similar_mods(mod_id, limit=min(24, _safe_int(arg("limit", "8"), 8))))
+                self._json(recommend.similar_mods(mod_id, limit=max(1, min(24, _safe_int(arg("limit", "8"), 8)))))
             else:
                 viewer = self._current_user()
                 try:
@@ -863,10 +863,10 @@ class Handler(BaseHTTPRequestHandler):
                     searches = []
                 self._json(recommend.recommended_mods(
                     viewer["id"] if viewer else "",
-                    limit=min(24, _safe_int(arg("limit", "12"), 12)), searches=searches))
+                    limit=max(1, min(24, _safe_int(arg("limit", "12"), 12))), searches=searches))
             return True
         if path == "/api/recommend/collections":
-            self._json(recommend.recommended_collections(limit=min(24, _safe_int(arg("limit", "8"), 8))))
+            self._json(recommend.recommended_collections(limit=max(1, min(24, _safe_int(arg("limit", "8"), 8)))))
             return True
         if path == "/api/compat":
             self._json(compat.report(arg("id"), force=arg("force") == "1"))

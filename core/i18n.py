@@ -11,6 +11,13 @@ LANG = "ru"
 
 # точные совпадения: строки интерфейса
 EN: dict[str, str] = {
+    "ФИЛЬТРЫ": "FILTERS",
+    "проверенные": "verified",
+    "с обложкой": "with cover",
+    "＋ В сборку": "＋ Add to collection",
+    "Такой же мод есть ещё на: ": "Also available on: ",
+    "Такой же мод есть ещё на": "Also available on",
+    "других сайтах": "other sites",
     # страница мода и совместимость
     "Версия игры": "Game version",
     "Версия мода": "Mod version",
@@ -310,6 +317,8 @@ RULES: list[tuple[str, str]] = [
 
 
 SUBS: list[tuple[str, str]] = [
+    ("Такой же мод есть ещё на: ", "Also available on: "),
+    ("других сайтах", "other sites"),
     ("Машины", "Cars"),
     ("Карты", "Maps"),
     ("Инструменты", "Tools"),

@@ -648,7 +648,8 @@ class App:
 
     def _paint_chips(self) -> None:
         for key, var in (("game", self.filter_game), ("image", self.filter_image),
-                         ("fav", self.filter_fav)):
+                         ("fav", self.filter_fav),
+                         ("verified", self.filter_verified)):
             chip = self.filter_chips.get(key)
             if chip is None:
                 continue
@@ -1304,6 +1305,7 @@ class App:
         self.filter_game.set(False)
         self.filter_image.set(False)
         self.filter_fav.set(False)
+        self.filter_verified.set(False)
         try:
             self.search_var.set("")
         except Exception:  # noqa: BLE001
