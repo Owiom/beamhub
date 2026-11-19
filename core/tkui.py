@@ -665,7 +665,10 @@ class App:
         """Отдельная кнопка фильтра избранного."""
         self.filter_fav.set(not self.filter_fav.get())
         self._paint_fav_button()
-        self.reload()
+        if self.view != "catalog":
+            self.switch("catalog")
+        else:
+            self.reload()
 
     def _paint_fav_button(self) -> None:
         try:
@@ -1827,13 +1830,15 @@ class App:
                         row.get("size_text") or ""]))
                     tk.Label(info, text=meta or "мод каталога", bg=PANEL, fg=DIM,
                              font=(FONT, CAPTION_PX), anchor="w").pack(fill="x")
-                    self._bind_click_tree(line, lambda r=row: self.details_by_id(r["id"]))
+                    self._bind_click_tree(
+                        line, lambda r=row, cur=item: self.details_by_id(
+                            r["id"], back=lambda: self.details(cur)))
                     if index < len(items[:5]) - 1:
                         tk.Frame(panel, bg=LINE_SOFT, height=1).pack(fill="x", padx=12)
             self._translate_ui(window)
         self.root.after(0, apply)
 
-    def details_by_id(self, mod_id: str) -> None:
+    def details_by_id(self, mod_id: str, back=None) -> None:
         try:
             data = self.api.get("/api/mod", id=mod_id)
         except Exception as exc:  # noqa: BLE001
@@ -1842,7 +1847,7 @@ class App:
         if not data.get("ok") and data.get("item") is None:
             self.toast(data.get("error", "Мод не найден"), "error")
             return
-        self.details(data.get("item") or data)
+        self.details(data.get("item") or data, back=back)
 
     def stats_window(self) -> None:
         page = self._show_page("Статистика сообщества")
@@ -2038,6 +2043,10 @@ class App:
                 stats = self.api.post("/api/library/match", {})
                 text = (f"Сопоставлено: {stats.get('matched')} из {stats.get('checked')}.\n"
                         "Для привязанных модов теперь работают обновления.")
+                matched = stats.get("matched", 0)
+                checked = stats.get("checked", 0)
+                self.root.after(0, lambda: self.set_status(
+                    f"Сопоставлено: {matched} из {checked}"))
                 self.root.after(0, lambda: messagebox.showinfo("Сопоставление с каталогом", text))
                 self.root.after(0, self.render_library)
             except Exception as exc:  # noqa: BLE001
@@ -2150,7 +2159,8 @@ class App:
                      font=(FONT_BOLD, BODY_PX, "bold"), anchor="w").pack(fill="x")
             rating = coll.get("rating") or {}
             state = "опубликована" if coll.get("published") else "черновик"
-            tk.Label(info, text=f"{coll.get('items_count', 0)} модов · ★ "
+            tk.Label(info, text=f"{coll.get('items_count', 0)} "
+                                    f"{self._plural(coll.get('items_count', 0), 'мод', 'мода', 'модов')} · ★ "
                                 f"{float(rating.get('avg') or 0):.1f} "
                                 f"({rating.get('count', 0)}) · {state}",
                      bg=PANEL, fg=DIM, font=(FONT, CAPTION_PX), anchor="w").pack(fill="x")
@@ -2702,6 +2712,7 @@ class App:
         rating = coll.get("rating") or {}
 
         window = self._show_page(coll.get("title") or "Сборка")
+        self._page_key = coll_id
         missing_count = len(plan.get("missing") or [])
         owner = (coll.get("owner") or {}).get("nickname") or "автор"
 
@@ -3627,6 +3638,15 @@ class App:
             window.destroy()
         self.collection_details(coll_id)
 
+    def refresh_collection_later(self, coll_id: str) -> None:
+        """Перерисовать сборку через 4 с, но только если её ещё смотрят."""
+        def check() -> None:
+            if (getattr(self, "_page_active", False)
+                    and getattr(self, "_page_key", None) == coll_id):
+                self.collection_details(coll_id)
+
+        self.root.after(4000, check)
+
     def open_all_links(self, coll_id: str) -> None:
         result = self.api.post("/api/collections/open-all", {"id": coll_id})
         if not result.get("ok"):
@@ -3641,7 +3661,7 @@ class App:
             return
         self.toast(result.get("message", "Скачиваю сборку…"), "ok")
         self.set_status(result.get("message", "Скачиваю сборку…"))
-        self.root.after(4000, lambda: self.collection_details(coll_id))
+        self.refresh_collection_later(coll_id)
 
     def apply_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
         result = self.api.post("/api/collections/sequence", {"id": coll_id})
@@ -3650,7 +3670,7 @@ class App:
             return
         self.toast(result.get("message", "Скачиваю сборку…"), "ok")
         self.set_status(result.get("message", "Скачиваю сборку…"))
-        self.root.after(4000, lambda: self.collection_details(coll_id))
+        self.refresh_collection_later(coll_id)
 
     def _pick_categories(self) -> list[dict]:
         """Категории каталога с количеством — для подбора мода в сборку."""

@@ -33,7 +33,9 @@ def _clean_seed(path: Path) -> None:
 
     try:
         con = sqlite3.connect(path)
-        for table in ("installed", "favorites", "meta"):
+        for table in ("installed", "favorites", "meta", "users", "sessions",
+              "collections", "collection_items", "comments", "ratings",
+              "reports", "follows", "favorites"):
             try:
                 con.execute(f"DELETE FROM {table}")
             except sqlite3.Error:
