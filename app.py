@@ -378,8 +378,9 @@ class Handler(BaseHTTPRequestHandler):
                     return True
                 marks = ",".join("?" for _ in ids)
                 rows = db.query(
-                    f"SELECT id, title, image, category, version, game_version, size_text, "
-                    f"downloads, url, source, author FROM mods WHERE id IN ({marks})", ids)
+                    f"SELECT id, title, description, image, category, version, game_version, "
+                    f"size_text, size_bytes, downloads, published, url, source, author "
+                    f"FROM mods WHERE id IN ({marks})", ids)
                 by_id = {row["id"]: row for row in rows}
                 items = [by_id[mod_id] for mod_id in ids if mod_id in by_id]
                 self._json({"ok": True, "items": items})
