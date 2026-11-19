@@ -379,6 +379,8 @@ class RoundButton(tk.Canvas):
             self._draw()
 
     def _on_release(self, _event=None) -> None:
+        if self._state == "disabled":
+            return
         was_pressed = self._state == "pressed"
         self._state = "normal"
         self._draw()

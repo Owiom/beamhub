@@ -60,8 +60,6 @@ def _pick_mods(words: tuple[str, ...], limit: int = 10) -> list[str]:
 def ensure() -> int:
     """Создаёт официальные сборки, если их ещё нет. Возвращает число созданных."""
     team = _ensure_team_user()
-    cleanup_torrents()
-    refill()
     existing = {row["title"] for row in db.query(
         "SELECT title FROM collections WHERE owner_id=?", (team,))}
     created = 0
@@ -86,6 +84,8 @@ def ensure() -> int:
                 "added_at) VALUES(?,?,?,?,?)",
                 (coll_id, mod_id, index, "", now))
         created += 1
+    cleanup_torrents()
+    refill()
     return created
 
 

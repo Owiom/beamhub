@@ -699,7 +699,10 @@ class App:
         except Exception:  # noqa: BLE001
             pass
         self._translate_ui(self.root)
-        self.refresh_all()
+        if getattr(self, "_page_active", False):
+            self._translate_ui(self.page)
+        else:
+            self.refresh_all()
         try:
             self.lang_button.configure(text=self._lang_label())
         except Exception:  # noqa: BLE001
@@ -1870,6 +1873,28 @@ class App:
             ("Оценки", data.get("ratings", 0)),
         ])
 
+        activity = data.get("activity") or []
+        if activity:
+            totals: dict = {}
+            for row in activity:
+                day = str(row.get("day") or "")
+                totals[day] = totals.get(day, 0) + int(row.get("events") or 0)
+            self._section(page, "Активность", "события за 14 дней")
+            chart = tk.Frame(page, bg=BG)
+            chart.pack(fill="x", pady=(0, 12))
+            peak = max(totals.values()) or 1
+            for day in sorted(totals)[-14:]:
+                value = totals[day]
+                col = tk.Frame(chart, bg=BG)
+                col.pack(side="left", padx=3)
+                height = max(4, int(44 * value / peak))
+                tk.Frame(col, bg=BG, height=44 - height).pack()
+                tk.Frame(col, bg=ACCENT, width=20, height=height).pack()
+                tk.Label(col, text=str(value), bg=BG, fg=MUTED,
+                         font=(FONT, CAPTION_PX)).pack(pady=(2, 0))
+                tk.Label(col, text=day[5:], bg=BG, fg=DIM,
+                         font=(FONT, CAPTION_PX)).pack()
+
         self._section(page, "Топ модов", "по установкам, кликам и просмотрам")
         top = data.get("top_mods") or []
         if not top:
@@ -2873,7 +2898,8 @@ class App:
 
     # ---------------------------------------------------------------- отзывы
     def collection_reviews(self, coll_id: str, title: str = "") -> None:
-        page = self._show_page(f"Отзывы — {title}" if title else "Отзывы")
+        page = self._show_page(f"Отзывы — {title}" if title else "Отзывы",
+                               back=lambda: self.collection_details(coll_id))
         body = page
         stars_var = {"value": 0}
 
@@ -3059,56 +3085,56 @@ class App:
                 tk.Label(composer_row, text="Войдите, чтобы писать", bg=PANEL, fg=DIM,
                          font=(FONT, CAPTION_PX)).pack(side="left", padx=8)
 
-                def comment_block(parent: tk.Misc, comment: dict, depth: int = 0) -> None:
-                    wrap = tk.Frame(parent, bg=BG)
-                    wrap.pack(fill="x", padx=(depth * 22, 0), pady=3)
-                    outer = theme.RoundedFrame(wrap, radius=12, fill=PANEL, border=LINE_SOFT,
-                                               padding=1)
-                    outer.pack(fill="x")
-                    line = outer.body
-                    top = tk.Frame(line, bg=PANEL)
-                    top.pack(fill="x", padx=12, pady=(8, 0))
-                    author = comment.get("author") or {}
-                    tk.Label(top, text=author.get("nickname") or "?", bg=PANEL, fg=TEXT,
-                             font=(FONT_BOLD, BODY_PX, "bold")).pack(side="left")
-                    tk.Label(top, text=" · " + human_ago(comment.get("created_at")), bg=PANEL,
-                             fg=DIM, font=(FONT, CAPTION_PX)).pack(side="left")
-                    if comment.get("deleted"):
-                        tk.Label(line, text="Комментарий удалён", bg=PANEL, fg=DIM,
-                                 font=(FONT, CAPTION_PX), anchor="w").pack(
-                            fill="x", padx=12, pady=(2, 8))
-                        return
-                    tk.Label(line, text=comment.get("body"), bg=PANEL, fg=TEXT,
-                             font=(FONT, BODY_PX), wraplength=980, justify="left",
-                             anchor="w").pack(fill="x", padx=12, pady=(2, 4))
-                    if not comment.get("deleted") and self.user:
-                        reply_row = tk.Frame(line, bg=PANEL)
-                        reply_row.pack(fill="x", padx=12, pady=(0, 8))
-                        theme.RoundButton(
-                            reply_row, "Ответить",
-                            lambda c=comment: (
-                                reply_state.__setitem__("parent", c["id"]),
-                                reply_hint.configure(
-                                    text=f"Ответ на {((c.get('author') or {}).get('nickname') or '?')}"),
-                                field.focus_set()),
-                            height=28, radius=10, bg=PANEL, fg=MUTED,
-                            hover=SURFACE_3, border=LINE, border_hover=BORDER_STRONG,
-                            font=(FONT, CAPTION_PX)).pack(side="left")
-                    if comment.get("is_mine") or comment.get("can_moderate"):
-                        tools = tk.Frame(line, bg=PANEL)
-                        tools.pack(fill="x", padx=12, pady=(0, 8))
-                        theme.RoundButton(
-                            tools, "Удалить",
-                            lambda c=comment: (self.api.post(
-                                "/api/comments/delete", {"id": c["id"]}), render())[-1],
-                            height=28, radius=10, bg=PANEL, fg=DANGER_TEXT,
-                            hover=DANGER_SOFT, border=LINE, border_hover=DUP_LINE,
-                            font=(FONT, CAPTION_PX)).pack(side="left")
-                    for reply in comment.get("replies") or []:
-                        comment_block(parent, reply, depth + 1)
+            def comment_block(parent: tk.Misc, comment: dict, depth: int = 0) -> None:
+                wrap = tk.Frame(parent, bg=BG)
+                wrap.pack(fill="x", padx=(depth * 22, 0), pady=3)
+                outer = theme.RoundedFrame(wrap, radius=12, fill=PANEL, border=LINE_SOFT,
+                                           padding=1)
+                outer.pack(fill="x")
+                line = outer.body
+                top = tk.Frame(line, bg=PANEL)
+                top.pack(fill="x", padx=12, pady=(8, 0))
+                author = comment.get("author") or {}
+                tk.Label(top, text=author.get("nickname") or "?", bg=PANEL, fg=TEXT,
+                         font=(FONT_BOLD, BODY_PX, "bold")).pack(side="left")
+                tk.Label(top, text=" · " + human_ago(comment.get("created_at")), bg=PANEL,
+                         fg=DIM, font=(FONT, CAPTION_PX)).pack(side="left")
+                if comment.get("deleted"):
+                    tk.Label(line, text="Комментарий удалён", bg=PANEL, fg=DIM,
+                             font=(FONT, CAPTION_PX), anchor="w").pack(
+                        fill="x", padx=12, pady=(2, 8))
+                    return
+                tk.Label(line, text=comment.get("body"), bg=PANEL, fg=TEXT,
+                         font=(FONT, BODY_PX), wraplength=980, justify="left",
+                         anchor="w").pack(fill="x", padx=12, pady=(2, 4))
+                if not comment.get("deleted") and self.user:
+                    reply_row = tk.Frame(line, bg=PANEL)
+                    reply_row.pack(fill="x", padx=12, pady=(0, 8))
+                    theme.RoundButton(
+                        reply_row, "Ответить",
+                        lambda c=comment: (
+                            reply_state.__setitem__("parent", c["id"]),
+                            reply_hint.configure(
+                                text=f"Ответ на {((c.get('author') or {}).get('nickname') or '?')}"),
+                            field.focus_set()),
+                        height=28, radius=10, bg=PANEL, fg=MUTED,
+                        hover=SURFACE_3, border=LINE, border_hover=BORDER_STRONG,
+                        font=(FONT, CAPTION_PX)).pack(side="left")
+                if comment.get("is_mine") or comment.get("can_moderate"):
+                    tools = tk.Frame(line, bg=PANEL)
+                    tools.pack(fill="x", padx=12, pady=(0, 8))
+                    theme.RoundButton(
+                        tools, "Удалить",
+                        lambda c=comment: (self.api.post(
+                            "/api/comments/delete", {"id": c["id"]}), render())[-1],
+                        height=28, radius=10, bg=PANEL, fg=DANGER_TEXT,
+                        hover=DANGER_SOFT, border=LINE, border_hover=DUP_LINE,
+                        font=(FONT, CAPTION_PX)).pack(side="left")
+                for reply in comment.get("replies") or []:
+                    comment_block(parent, reply, depth + 1)
 
-                for comment in comments:
-                    comment_block(body, comment)
+            for comment in comments:
+                comment_block(body, comment)
             self._translate_ui(page)
 
         render()
@@ -4199,6 +4225,11 @@ class App:
     def save_settings(self) -> None:
         payload = {key: var.get() for key, var in self._setting_vars.items()}
         payload["auto_install"] = bool(self._setting_vars["auto_install"].get())
+        for key, label in (("mods_dir", "папка модов"), ("downloads_dir", "папка загрузок")):
+            value = (payload.get(key) or "").strip()
+            if value and not Path(value).exists():
+                self.set_status(f"Не сохранил: {label} не существует — {value}")
+                return
         try:
             self.api.post("/api/settings", payload)
             self.set_status("Настройки сохранены")
@@ -4437,7 +4468,7 @@ class App:
                               "Все установленные моды актуальны. Проверить снова можно в "
                               "настройках или по кнопке ниже.",
                               "arrow",
-                              action=lambda: self.check_updates(silent=False),
+                              action=lambda: self.render_updates(),
                               action_text="Проверить ещё раз").pack(pady=44)
             return
         self._section(frame, "Доступны обновления",
@@ -4493,6 +4524,10 @@ class App:
         def work() -> None:
             try:
                 data = self.api.post("/api/add-link", {"url": url.strip()})
+                if not data.get("ok"):
+                    message = data.get("error") or "Не удалось добавить мод"
+                    self.root.after(0, lambda: self.set_status(f"Ошибка: {message}"))
+                    return
                 title = data.get("item", {}).get("title", "мод")
                 self.root.after(0, lambda: self.set_status(f"Добавлено: {title}"))
                 self.root.after(0, lambda: self.switch("catalog"))

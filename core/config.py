@@ -165,7 +165,7 @@ def _migrate(data: dict) -> dict:
     # пустое значение в старом settings.json не должно затирать новый дефолт
     # (например, почту обратной связи, появившуюся в свежей версии)
     for key, default in DEFAULTS.items():
-        if default and not merged.get(key):
+        if default and (key not in merged or merged[key] in (None, "")):
             merged[key] = default
     return merged
 

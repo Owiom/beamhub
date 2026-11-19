@@ -1587,9 +1587,6 @@ def main() -> None:
     if args.diagnose:
         print("=== diagnose ===")
         print("frozen:", config.is_frozen())
-        print("desktop module:", desktop is not None)
-        if desktop is not None:
-            print("desktop.available():", desktop.available())
         try:
             import webview
 
