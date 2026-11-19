@@ -1114,6 +1114,50 @@ class Handler(BaseHTTPRequestHandler):
                       else collections.publish(coll_id, user["id"], body.get("note", "")))
             self._json(result)
             return True
+        if path == "/api/collections/install":
+            user = self._current_user()
+            if not user:
+                self._json({"ok": False, "error": "Нужно войти в аккаунт."}, status=401)
+                return True
+            coll_id = body.get("id", "")
+            plan = collections.plan(coll_id, user["id"])
+            if not plan.get("ok"):
+                self._json(plan, status=404)
+                return True
+            missing = plan.get("missing") or []
+            if not missing:
+                self._json({"ok": True, "queued": 0,
+                            "message": "Вся сборка уже установлена."})
+                return True
+
+            def worker() -> None:
+                done, failed = 0, 0
+                for item in missing:
+                    mod = db.get_mod(item["mod_id"])
+                    if not mod:
+                        failed += 1
+                        continue
+                    HUB.emit("progress", f"Скачиваю: {mod.get('title') or mod['id']}")
+                    result = download_and_install(mod)
+                    if result.get("status") in ("installed", "duplicate"):
+                        done += 1
+                        collections.record_event("install", mod_id=mod["id"],
+                                                 coll_id=coll_id, user_id=user["id"])
+                        HUB.emit("installed", f"Установлено: "
+                                              f"{(result.get('installed') or {}).get('title') or mod['id']}")
+                    else:
+                        failed += 1
+                        HUB.emit("error", f"Не удалось: {mod.get('title') or mod['id']}")
+                HUB.emit("done", f"Сборка: установлено {done}, не удалось {failed}")
+                try:
+                    threading.Thread(target=matcher.match_all, daemon=True).start()
+                except Exception:  # noqa: BLE001
+                    pass
+
+            threading.Thread(target=worker, daemon=True).start()
+            self._json({"ok": True, "queued": len(missing),
+                        "message": f"Скачиваю моды: {len(missing)}. Прогресс — в строке статуса."})
+            return True
         if path == "/api/collections/apply":
             user = self._current_user()
             if not user:
@@ -1214,20 +1258,9 @@ display:flex;align-items:center;justify-content:center;height:100vh">
         from core.providers import resolve_download
 
         if mode == "download":
-            # Прямая загрузка внутри приложения (работает там, где нет Cloudflare).
-            import urllib.request
-
-            from core.http import UA
-
-            url = resolve_download(mod)
-            target = Path(config.load().get("downloads_dir") or Path.home() / "Downloads") / (
-                (mod.get("title") or "mod")[:80].replace("/", "_") + ".zip")
-            request = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": mod.get("url") or ""})
-            with urllib.request.urlopen(request, timeout=120) as resp, open(target, "wb") as handle:
-                while chunk := resp.read(1 << 16):
-                    handle.write(chunk)
-            result = installer.install_archive(target, mod)
-            self._json({"ok": result["status"] == "installed", "mode": "download", **result})
+            result = download_and_install(mod)
+            self._json({"ok": result.get("status") in ("installed", "duplicate"),
+                        "mode": "download", **result})
             return
 
         url = resolve_download(mod)
@@ -1351,6 +1384,36 @@ def tell_user(title: str, message: str) -> None:
     except Exception:  # noqa: BLE001
         pass
 
+
+
+
+def download_and_install(mod: dict) -> dict:
+    """Скачать мод по прямой ссылке и поставить. Возвращает статус."""
+    from core.providers import resolve_download
+
+    url = resolve_download(mod) or ""
+    if not url:
+        return {"status": "failed", "error": "нет ссылки"}
+    cfg = config.load()
+    target = Path(cfg.get("downloads_dir") or Path.home() / "Downloads") / (
+        (mod.get("title") or "mod")[:80].replace("/", "_").replace("\\", "_") + ".zip")
+    try:
+        import urllib.request
+
+        from core.http import UA
+
+        request = urllib.request.Request(
+            url, headers={"User-Agent": UA, "Referer": mod.get("url") or ""})
+        with urllib.request.urlopen(request, timeout=180) as resp, open(target, "wb") as handle:
+            while chunk := resp.read(1 << 16):
+                handle.write(chunk)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "error": str(exc)[:200]}
+    try:
+        result = installer.install_archive(target, mod)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "error": str(exc)[:200]}
+    return result
 
 def write_shortcut(url: str) -> None:
     """Ярлык на само приложение: веб-версия устарела и только путает."""

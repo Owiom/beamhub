@@ -2945,14 +2945,13 @@ class App:
         self.collection_details(coll_id)
 
     def apply_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
-        result = self.api.post("/api/collections/apply", {"id": coll_id})
+        result = self.api.post("/api/collections/install", {"id": coll_id})
         if not result.get("ok"):
             self.toast(result.get("error", "Не удалось начать установку"), "error")
             return
-        self.toast(result.get("message", "Открыл мод"), "ok")
-        if window is not None:
-            window.destroy()
-        self.collection_details(coll_id)
+        self.toast(result.get("message", "Скачиваю сборку…"), "ok")
+        self.set_status(result.get("message", "Скачиваю сборку…"))
+        self.root.after(4000, lambda: self.collection_details(coll_id))
 
     def _pick_categories(self) -> list[dict]:
         """Категории каталога с количеством — для подбора мода в сборку."""
