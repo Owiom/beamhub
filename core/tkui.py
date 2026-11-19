@@ -23,24 +23,25 @@ from .version import VERSION
 from .util import (CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date,
                     title_key)
 
-BG = "#0b0c10"
-SOFT = "#101116"
-PANEL = "#15171e"
-LINE = "#242832"
-LINE_SOFT = "#1b1e26"
-SURFACE_2 = "#1c1f28"
-SURFACE_3 = "#242833"
-TEXT = "#edeff3"
-MUTED = "#98a0b0"
-DIM = "#7d8494"
+BG = "#08090c"
+SOFT = "#0d0f14"
+PANEL = "#12141b"
+LINE = "#232734"
+LINE_SOFT = "#1a1e27"
+SURFACE_2 = "#171a22"
+SURFACE_3 = "#20242f"
+BORDER_STRONG = "#4b5670"
+TEXT = "#f0f2f7"
+MUTED = "#9aa3b4"
+DIM = "#7a8291"
 ACCENT = "#ff7a1a"
-ACCENT_SOFT = "#3a2410"
-ACCENT_SOFT_TEXT = "#ffc79b"
-GREEN = "#35c46b"
-HOVER_BG = "#1c1f28"
-ACTIVE_BG = "#242833"
-DUP_BG = "#2a1618"
-DUP_LINE = "#7a2f33"
+ACCENT_SOFT = "#33200f"
+ACCENT_SOFT_TEXT = "#ffc08a"
+GREEN = "#34c87b"
+HOVER_BG = "#171a22"
+ACTIVE_BG = "#20242f"
+DUP_BG = "#241317"
+DUP_LINE = "#8a4a1c"
 SOURCE_NAMES = {"playground": "playground.ru", "modsgaming": "modsgaming.ru",
                 "beamngland": "beamngland.com", "beamngmods": "beamngmods.net",
                 "link": "по ссылке"}
@@ -48,11 +49,18 @@ SOURCE_NAMES = {"playground": "playground.ru", "modsgaming": "modsgaming.ru",
 FONT = "Segoe UI"          # в App.__init__ подменится на Segoe UI Variable (Windows 11)
 FONT_BOLD = "Segoe UI Semibold"
 
-CARD_W = 232
-IMG_W, IMG_H = 264, 150
+# Карточка 2026: картинка строго 16:9, одинаковая высота у всех карточек,
+# скругление только сверху — низ упирается в текстовый блок.
+IMG_W, IMG_H = 288, 162
+IMG_RADIUS = 14
+CARD_PAD = 8
+CARD_W = IMG_W
+CARD_GAP = 12
+SIDEBAR_W = 264
+NAV_H = 40
 
 try:
-    from PIL import Image, ImageTk
+    from PIL import Image, ImageOps, ImageTk
 
     HAS_PIL = True
 except Exception:  # noqa: BLE001
@@ -143,8 +151,8 @@ class App:
         self.coll_kind = "popular"
 
         root.title(f"BeamHub {VERSION} — каталог модов BeamNG.drive")
-        root.geometry("1360x860")
-        root.minsize(1100, 700)
+        root.geometry("1400x920")
+        root.minsize(1180, 720)
         root.configure(bg=BG)
         global FONT, FONT_BOLD
         FONT, FONT_BOLD = theme.font_setup()
@@ -165,82 +173,37 @@ class App:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure("TCombobox", fieldbackground=PANEL, background=PANEL,
+        style.configure("TCombobox", fieldbackground=SURFACE_2, background=SURFACE_2,
                         foreground=TEXT, arrowcolor=MUTED, bordercolor=LINE,
-                        lightcolor=LINE, darkcolor=LINE, padding=6)
-        style.map("TCombobox", fieldbackground=[("readonly", PANEL)],
-                  foreground=[("readonly", TEXT)], selectbackground=[("readonly", PANEL)])
-        style.configure("Vertical.TScrollbar", background="#2a2f3a", troughcolor=BG,
-                        bordercolor=BG, arrowcolor=BG, arrowsize=0, width=10,
+                        lightcolor=SURFACE_2, darkcolor=SURFACE_2,
+                        padding=(11, 8), arrowsize=14, font=(FONT, 10))
+        style.map("TCombobox",
+                  fieldbackground=[("readonly", SURFACE_2), ("active", SURFACE_3)],
+                  background=[("active", SURFACE_3)],
+                  foreground=[("readonly", TEXT)],
+                  arrowcolor=[("active", TEXT)],
+                  selectbackground=[("readonly", SURFACE_2)],
+                  bordercolor=[("focus", BORDER_STRONG), ("active", BORDER_STRONG)])
+        style.configure("Vertical.TScrollbar", background=SURFACE_3, troughcolor=BG,
+                        bordercolor=BG, arrowcolor=BG, arrowsize=0, width=12,
                         gripcount=0, relief="flat")
-        style.map("Vertical.TScrollbar", background=[("active", "#3a4150")])
-        style.configure("TCombobox", padding=7, borderwidth=0, relief="flat")
+        style.map("Vertical.TScrollbar", background=[("active", BORDER_STRONG)])
 
     # ---------------------------------------------------------------- каркас
     def _build(self) -> None:
-        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-        top = tk.Frame(self.root, bg=BG)
-        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 6))
-
-        self.search_var = tk.StringVar()
-        search_box = tk.Frame(top, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
-        search_box.pack(side="left", fill="x", expand=True)
-        entry = tk.Entry(search_box, textvariable=self.search_var, bg=PANEL, fg=TEXT,
-                         insertbackground=TEXT, relief="flat", font=(FONT, 11))
-        entry.pack(fill="x", padx=8, ipady=6)
-        placeholder = tk.Label(search_box, text="Поиск: bmw, карта, vaz, дрифт…", bg=PANEL,
-                               fg=DIM, font=(FONT, 11))
-        placeholder.place(x=10, y=7)
-        placeholder.bind("<Button-1>", lambda _e: entry.focus_set())
-        entry.bind("<FocusIn>", lambda _e: placeholder.place_forget())
-        entry.bind("<FocusOut>", lambda _e: (placeholder.place(x=10, y=7)
-                                             if not self.search_var.get() else None))
-        entry.bind("<Return>", lambda _e: self.on_search())
-        self.search_var.trace_add("write", lambda *_: self._search_debounced())
-
-        self.sort_var = tk.StringVar(value="Сначала новые")
-        sorts = ["Сначала новые", "Сначала старые", "По названию А→Я", "По названию Я→А",
-                 "По размеру", "По популярности"]
-        combo = ttk.Combobox(top, textvariable=self.sort_var, values=sorts, width=18,
-                             state="readonly")
-        combo.pack(side="left", padx=(10, 0))
-        combo.bind("<<ComboboxSelected>>", lambda _e: self.on_sort())
-
-        self.source_var = tk.StringVar(value="Все источники")
-        self._source_map = {"Все источники": "all"}
-        self.source_combo = ttk.Combobox(top, textvariable=self.source_var,
-                                         values=["Все источники"], width=17, state="readonly")
-        self.source_combo.pack(side="left", padx=(8, 0))
-        self.source_combo.bind("<<ComboboxSelected>>", lambda _e: self.on_source())
-
-        theme.RoundButton(top, "Обновить каталог", self.on_sync, height=32, font=(FONT, 9),
-                          bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left", padx=8)
-        theme.RoundButton(top, "＋ Ссылка", self.on_add_link, height=32, font=(FONT, 9),
-                          bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8).pack(side="left")
-        self.account_button = theme.RoundButton(top, "Войти", self.account_menu, height=32,
-                                                width=124, font=(FONT, 9), bg=PANEL, fg=TEXT,
-                                                hover=ACTIVE_BG, radius=8)
-        self.account_button.pack(side="left", padx=(8, 0))
-        self.lang_button = theme.RoundButton(top, self._lang_label(), self.toggle_language,
-                                             height=32, font=(FONT_BOLD, 9), width=54,
-                                             bg=PANEL, fg=TEXT, hover=ACTIVE_BG, radius=8)
-        self.lang_button.pack(side="left", padx=8)
-
         body = tk.Frame(self.root, bg=BG)
-        body.grid(row=1, column=0, sticky="nsew")
+        body.grid(row=0, column=0, sticky="nsew")
         body.grid_rowconfigure(0, weight=1)
         body.grid_columnconfigure(1, weight=1)
 
-        self.sidebar = tk.Frame(body, bg=SOFT, width=256)
+        self.sidebar = tk.Frame(body, bg=SOFT, width=SIDEBAR_W)
         self.sidebar.grid(row=0, column=0, sticky="ns")
         self.sidebar.grid_propagate(False)
+        self.sidebar.pack_propagate(False)
         self._build_sidebar()
-        try:
-            self.root.state("zoomed")
-        except tk.TclError:
-            pass
 
         self.main = tk.Frame(body, bg=BG)
         self.main.grid(row=0, column=1, sticky="nsew")
@@ -248,30 +211,11 @@ class App:
         self.main.grid_columnconfigure(0, weight=1)
 
         self.head = tk.Frame(self.main, bg=BG)
-        self.head.grid(row=0, column=0, sticky="ew", padx=24, pady=(14, 4))
-        self.title_label = tk.Label(self.head, text="Каталог модов", bg=BG, fg=TEXT,
-                                    font=(FONT_BOLD, 22))
-        self.title_label.pack(side="left")
-        self.count_label = tk.Label(self.head, text="", bg=BG, fg=MUTED, font=(FONT, 11))
-        self.count_label.pack(side="left", padx=12)
-
-        filters = tk.Frame(self.head, bg=BG)
-        filters.pack(side="right")
-        self.filter_game = tk.BooleanVar(value=False)
-        self.filter_image = tk.BooleanVar(value=False)
-        self.filter_fav = tk.BooleanVar(value=False)
-        self.filter_chips: dict[str, object] = {}
-        for text, var, key in (("0.40.x", self.filter_game, "game"),
-                               ("с обложкой", self.filter_image, "image"),
-                               ("избранное", self.filter_fav, "fav")):
-            chip = theme.RoundButton(filters, text, lambda v=var, k=key: self._toggle_chip(v, k),
-                                     height=28, radius=14, bg=PANEL, fg=MUTED,
-                                     hover=ACTIVE_BG, font=(FONT, 9))
-            chip.pack(side="left", padx=3)
-            self.filter_chips[key] = chip
+        self.head.grid(row=0, column=0, sticky="ew", padx=28, pady=(22, 8))
+        self._build_header()
 
         self.content = tk.Frame(self.main, bg=BG)
-        self.content.grid(row=1, column=0, sticky="nsew", padx=18, pady=(4, 0))
+        self.content.grid(row=1, column=0, sticky="nsew", padx=22, pady=(8, 0))
         self.content.grid_rowconfigure(0, weight=1)
         self.content.grid_columnconfigure(0, weight=1)
 
@@ -287,9 +231,120 @@ class App:
         self._page_active = False
         self._page_canvas = None
 
+        tk.Frame(self.root, bg=LINE, height=1).grid(row=1, column=0, sticky="ew")
         self.status = tk.Label(self.root, text="Готово", bg=SOFT, fg=MUTED, anchor="w",
-                               font=(FONT, 9), padx=14, pady=6)
+                               font=(FONT, 9), padx=18, pady=7)
         self.status.grid(row=2, column=0, sticky="ew")
+        try:
+            self.root.state("zoomed")
+        except tk.TclError:
+            pass
+
+    def _build_header(self) -> None:
+        """Шапка: крупный титул с подписью, поиск 40 px, чипы и аккаунт-аватар."""
+        top = tk.Frame(self.head, bg=BG)
+        top.pack(fill="x")
+
+        titles = tk.Frame(top, bg=BG)
+        titles.pack(side="left", anchor="w")
+        self.title_label = tk.Label(titles, text="Каталог модов", bg=BG, fg=TEXT,
+                                    font=(FONT_BOLD, 22, "bold"), anchor="w")
+        self.title_label.pack(anchor="w")
+        self.count_label = tk.Label(titles, text="", bg=BG, fg=MUTED, font=(FONT, 11),
+                                    anchor="w")
+        self.count_label.pack(anchor="w", pady=(2, 0))
+
+        actions = tk.Frame(top, bg=BG)
+        actions.pack(side="right", anchor="e")
+        self.account_button = theme.AvatarButton(actions, "Войти", self.account_menu,
+                                                 height=40, font=(FONT, 10))
+        self.account_button.pack(side="right")
+        self.lang_button = theme.RoundButton(actions, self._lang_label(), self.toggle_language,
+                                             height=36, width=48, radius=12,
+                                             font=(FONT_BOLD, 10, "bold"), bg=PANEL, fg=MUTED,
+                                             hover=SURFACE_3, border=LINE,
+                                             border_hover=BORDER_STRONG)
+        self.lang_button.pack(side="right", padx=(0, 8))
+        theme.RoundButton(actions, "＋ Ссылка", self.on_add_link, height=36, font=(FONT, 10),
+                          bg=PANEL, fg=TEXT, hover=SURFACE_3, border=LINE,
+                          border_hover=BORDER_STRONG).pack(side="right", padx=(0, 8))
+
+        tools = tk.Frame(self.head, bg=BG)
+        tools.pack(fill="x", pady=(16, 0))
+        self.tools_row = tools
+
+        search_shell = theme.RoundedFrame(tools, radius=12, fill=SURFACE_2, border=LINE,
+                                          padding=1, width=420, height=40)
+        search_shell.pack(side="left")
+        self.search_shell = search_shell
+        area = search_shell.body
+        glass = tk.Canvas(area, width=18, height=18, bg=SURFACE_2,
+                          highlightthickness=0, bd=0)
+        glass.place(x=13, rely=0.5, anchor="w")
+        self._draw_search_icon(glass, MUTED)
+        self.search_var = tk.StringVar()
+        entry = tk.Entry(area, textvariable=self.search_var, bg=SURFACE_2, fg=TEXT,
+                         insertbackground=TEXT, relief="flat", bd=0, highlightthickness=0,
+                         font=(FONT, 11))
+        entry.pack(fill="x", padx=(40, 12), ipady=8)
+        placeholder = tk.Label(area, text="Поиск: bmw, карта, vaz, дрифт…", bg=SURFACE_2,
+                               fg=DIM, font=(FONT, 11))
+        placeholder.place(x=40, rely=0.5, anchor="w")
+        placeholder.bind("<Button-1>", lambda _e: entry.focus_set())
+
+        def search_focus(_event=None) -> None:
+            placeholder.place_forget()
+            search_shell.set_border(BORDER_STRONG)
+
+        def search_blur(_event=None) -> None:
+            if not self.search_var.get():
+                placeholder.place(x=40, rely=0.5, anchor="w")
+            search_shell.set_border(LINE)
+
+        entry.bind("<FocusIn>", search_focus)
+        entry.bind("<FocusOut>", search_blur)
+        entry.bind("<Return>", lambda _e: self.on_search())
+        self.search_var.trace_add("write", lambda *_: self._search_debounced())
+
+        self.sort_var = tk.StringVar(value="Сначала новые")
+        sorts = ["Сначала новые", "Сначала старые", "По названию А→Я", "По названию Я→А",
+                 "По размеру", "По популярности"]
+        combo = ttk.Combobox(tools, textvariable=self.sort_var, values=sorts, width=17,
+                             state="readonly")
+        combo.pack(side="left", padx=(10, 0))
+        combo.bind("<<ComboboxSelected>>", lambda _e: self.on_sort())
+
+        self.source_var = tk.StringVar(value="Все источники")
+        self._source_map = {"Все источники": "all"}
+        self.source_combo = ttk.Combobox(tools, textvariable=self.source_var,
+                                         values=["Все источники"], width=16, state="readonly")
+        self.source_combo.pack(side="left", padx=(8, 0))
+        self.source_combo.bind("<<ComboboxSelected>>", lambda _e: self.on_source())
+
+        theme.RoundButton(tools, "Обновить каталог", self.on_sync, height=38, font=(FONT, 10),
+                          bg=PANEL, fg=MUTED, hover=SURFACE_3, border=LINE,
+                          border_hover=BORDER_STRONG).pack(side="right")
+
+        row = tk.Frame(self.head, bg=BG)
+        row.pack(fill="x", pady=(10, 0))
+        self.chips_row = row
+        tk.Label(row, text="ФИЛЬТРЫ", bg=BG, fg=DIM,
+                 font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=(2, 10))
+        filters = tk.Frame(row, bg=BG)
+        filters.pack(side="left")
+        self.filter_game = tk.BooleanVar(value=False)
+        self.filter_image = tk.BooleanVar(value=False)
+        self.filter_fav = tk.BooleanVar(value=False)
+        self.filter_chips: dict[str, object] = {}
+        for text, var, key in (("0.40.x", self.filter_game, "game"),
+                               ("с обложкой", self.filter_image, "image"),
+                               ("избранное", self.filter_fav, "fav")):
+            chip = theme.RoundButton(filters, text, lambda v=var, k=key: self._toggle_chip(v, k),
+                                     height=28, radius=14, bg=SURFACE_2, fg=MUTED,
+                                     hover=SURFACE_3, font=(FONT, 9), border=LINE,
+                                     border_hover=BORDER_STRONG)
+            chip.pack(side="left", padx=(0, 6))
+            self.filter_chips[key] = chip
 
     NAV_ITEMS = (("catalog", "Каталог", "grid"),
                  ("collections", "Сборки", "layers"),
@@ -300,102 +355,171 @@ class App:
 
     def _build_sidebar(self) -> None:
         brand = tk.Frame(self.sidebar, bg=SOFT)
-        brand.pack(fill="x", padx=14, pady=(16, 10))
-        tk.Label(brand, text="B", bg=ACCENT, fg="#14100c", font=(FONT_BOLD, 15),
-                 width=2).pack(side="left")
+        brand.pack(fill="x", padx=18, pady=(22, 18))
+        logo = tk.Canvas(brand, width=34, height=34, bg=SOFT, highlightthickness=0, bd=0)
+        logo.pack(side="left")
+        theme.rounded_rect(logo, 1, 1, 33, 33, 10, fill=ACCENT)
+        logo.create_text(17, 17, text="B", fill="#170d04", font=(FONT_BOLD, 13, "bold"))
         titles = tk.Frame(brand, bg=SOFT)
-        titles.pack(side="left", padx=10)
-        tk.Label(titles, text="BeamHub", bg=SOFT, fg=TEXT, font=(FONT_BOLD, 14),
+        titles.pack(side="left", padx=11)
+        tk.Label(titles, text="BeamHub", bg=SOFT, fg=TEXT, font=(FONT_BOLD, 13, "bold"),
                  anchor="w").pack(anchor="w")
         tk.Label(titles, text="каталог модов BeamNG.drive", bg=SOFT, fg=DIM,
-                 font=(FONT, 8), anchor="w").pack(anchor="w")
+                 font=(FONT, 9), anchor="w").pack(anchor="w", pady=(1, 0))
 
-        self.nav_buttons: dict[str, tk.Frame] = {}
+        self.nav_buttons: dict[str, tk.Canvas] = {}
         self.nav_parts: dict[str, dict] = {}
-        for key, title, icon in self.NAV_ITEMS:
-            row = tk.Frame(self.sidebar, bg=SOFT, cursor="hand2", height=40)
-            row.pack(fill="x", padx=6, pady=1)
-            row.pack_propagate(False)
-            bar = tk.Canvas(row, width=3, bg=SOFT, highlightthickness=0, bd=0)
-            bar.pack(side="left", fill="y")
-            icon_canvas = tk.Canvas(row, width=26, height=40, bg=SOFT, highlightthickness=0, bd=0)
-            icon_canvas.pack(side="left", padx=(10, 4))
-            label = tk.Label(row, text=title, bg=SOFT, fg=MUTED, font=(FONT, 11), anchor="w")
-            label.pack(side="left", fill="x", expand=True)
-            badge = tk.Label(row, text="", bg=SOFT, fg=DIM, font=(FONT_BOLD, 8), padx=6)
-            badge.pack(side="right", padx=(4, 8))
-            self._draw_icon(icon_canvas, icon, MUTED)
-            self.nav_parts[key] = {"row": row, "bar": bar, "icon": icon_canvas, "kind": icon,
-                                   "label": label, "badge": badge}
+        self._nav_titles = {key: title for key, title, _icon in self.NAV_ITEMS}
+        for key, _title, icon in self.NAV_ITEMS:
+            row = tk.Canvas(self.sidebar, height=NAV_H, bg=SOFT, highlightthickness=0,
+                            bd=0, cursor="hand2")
+            row.pack(fill="x", padx=12, pady=1)
+            row.bind("<Button-1>", lambda _e, k=key: self.switch(k))
+            row.bind("<Enter>", lambda _e, k=key: self._nav_hover(k, True))
+            row.bind("<Leave>", lambda _e, k=key: self._nav_hover(k, False))
+            row.bind("<Configure>", lambda _e, k=key: self._paint_nav(k))
+            self.nav_parts[key] = {"canvas": row, "kind": icon, "badge": "",
+                                   "accent": False}
             self.nav_buttons[key] = row
-            for widget in (row, bar, icon_canvas, label, badge):
-                widget.bind("<Button-1>", lambda _e, k=key: self.switch(k))
-                widget.bind("<Enter>", lambda _e, k=key: self._nav_hover(k, True))
-                widget.bind("<Leave>", lambda _e, k=key: self._nav_hover(k, False))
 
-        tk.Frame(self.sidebar, bg=LINE, height=1).pack(fill="x", padx=14, pady=(12, 8))
-        tk.Label(self.sidebar, text="КАТЕГОРИИ", bg=SOFT, fg=DIM, font=(FONT, 8),
-                 anchor="w").pack(fill="x", padx=18, pady=(4, 4))
+        tk.Frame(self.sidebar, bg=LINE, height=1).pack(fill="x", padx=18, pady=(16, 10))
+        tk.Label(self.sidebar, text="КАТЕГОРИИ", bg=SOFT, fg=DIM, font=(FONT_BOLD, 9, "bold"),
+                 anchor="w").pack(fill="x", padx=22, pady=(2, 6))
         self.cat_frame = tk.Frame(self.sidebar, bg=SOFT)
-        self.cat_frame.pack(fill="both", expand=True, padx=8)
+        self.cat_frame.pack(fill="both", expand=True, padx=10)
 
         foot = tk.Frame(self.sidebar, bg=SOFT)
-        foot.pack(side="bottom", fill="x", padx=14, pady=12)
-        self.foot_label = tk.Label(foot, text="", bg=SOFT, fg=DIM, font=(FONT, 8),
-                                   justify="left", wraplength=200, anchor="w")
+        foot.pack(side="bottom", fill="x", padx=18, pady=(10, 10))
+        self.foot_label = tk.Label(foot, text="", bg=SOFT, fg=DIM, font=(FONT, 9),
+                                   justify="left", wraplength=210, anchor="w")
         self.foot_label.pack(anchor="w")
 
-        tk.Button(self.sidebar, text="Остановить BeamHub", bg=SOFT, fg="#ff9a9a",
+        tk.Button(self.sidebar, text="Остановить BeamHub", bg=SOFT, fg="#f0837f",
                   activebackground="#241214", activeforeground="#ffb3b3", relief="flat",
-                  font=(FONT, 9), anchor="w", padx=14, pady=6, cursor="hand2",
-                  command=self.on_quit).pack(side="bottom", fill="x", padx=8)
+                  bd=0, font=(FONT, 9), anchor="w", padx=18, pady=7, cursor="hand2",
+                  command=self.on_quit).pack(side="bottom", fill="x", padx=6)
 
-    def _draw_icon(self, canvas: tk.Canvas, kind: str, color: str) -> None:
-        """Иконки рисуем сами: emoji в tkinter выглядят по-разному на разных Windows."""
-        canvas.delete("all")
+    def _draw_icon(self, canvas: tk.Canvas, kind: str, color: str, size: int = 18,
+                   cx: float | None = None, cy: float | None = None,
+                   clear: bool = True) -> None:
+        """Иконки рисуем сами: emoji в tkinter выглядят по-разному на разных Windows.
+
+        Размер 18–20 px: линия 2 px читается на 100 % масштабе и не «шумит»,
+        как прежние 12-пиксельные пиктограммы.
+        """
+        if clear:
+            canvas.delete("all")
+        try:
+            width = max(canvas.winfo_width(), int(float(canvas.cget("width")) or 22))
+            height = max(canvas.winfo_height(), int(float(canvas.cget("height")) or 30))
+        except (tk.TclError, ValueError):
+            width, height = 22, 30
+        if cx is None:
+            cx = width / 2
+        if cy is None:
+            cy = height / 2
+        half = (size - 2) / 2
         if kind == "grid":
-            for dx, dy in ((0, 0), (10, 0), (0, 10), (10, 10)):
-                canvas.create_rectangle(5 + dx, 10 + dy, 11 + dx, 16 + dy, fill=color, width=0)
+            step = size * 0.52
+            box = size * 0.36
+            for dx, dy in ((0, 0), (step, 0), (0, step), (step, step)):
+                x, y = cx - half + dx, cy - half + dy
+                canvas.create_rectangle(x, y, x + box, y + box, fill=color, width=0)
         elif kind == "book":
-            canvas.create_rectangle(4, 9, 10, 27, fill=color, width=0)
-            canvas.create_rectangle(12, 9, 18, 27, fill=color, width=0)
+            canvas.create_line(cx - 6, cy - half, cx - 6, cy + half, fill=color, width=2)
+            canvas.create_line(cx + 6, cy - half, cx + 6, cy + half, fill=color, width=2)
+            canvas.create_line(cx - 6, cy - half, cx + 6, cy - half, fill=color, width=2)
+            canvas.create_line(cx - 6, cy + half, cx + 6, cy + half, fill=color, width=2)
+            canvas.create_line(cx, cy - half, cx, cy + half, fill=color, width=1)
         elif kind == "arrow":
-            canvas.create_line(11, 8, 11, 23, fill=color, width=2)
-            canvas.create_line(6, 18, 11, 24, 16, 18, fill=color, width=2)
+            canvas.create_line(cx, cy + 7, cx, cy - 7, fill=color, width=2)
+            canvas.create_line(cx - 5, cy - 1, cx, cy - 6, fill=color, width=2,
+                               capstyle="round")
+            canvas.create_line(cx + 5, cy - 1, cx, cy - 6, fill=color, width=2,
+                               capstyle="round")
         elif kind == "tray":
-            canvas.create_line(4, 22, 4, 27, 18, 27, 18, 22, fill=color, width=2)
-            canvas.create_line(11, 7, 11, 18, fill=color, width=2)
-            canvas.create_line(6, 14, 11, 20, 16, 14, fill=color, width=2)
+            canvas.create_line(cx - 7, cy + 2, cx - 7, cy + 7, cx + 7, cy + 7, cx + 7, cy + 2,
+                               fill=color, width=2, joinstyle="round")
+            canvas.create_line(cx, cy - 7, cx, cy + 2, fill=color, width=2)
+            canvas.create_line(cx - 4, cy - 1, cx, cy + 3, cx + 4, cy - 1, fill=color,
+                               width=2, capstyle="round")
         elif kind == "layers":
-            canvas.create_polygon(11, 6, 19, 11, 11, 16, 3, 11, fill="", outline=color, width=1)
-            canvas.create_line(3, 15, 11, 20, 19, 15, fill=color, width=1)
-            canvas.create_line(3, 19, 11, 24, 19, 19, fill=color, width=1)
+            canvas.create_polygon(cx, cy - 7, cx + 7, cy - 2, cx, cy + 3, cx - 7, cy - 2,
+                                  fill="", outline=color, width=2)
+            canvas.create_line(cx - 7, cy + 3, cx, cy + 8, cx + 7, cy + 3, fill=color,
+                               width=2, joinstyle="round")
         elif kind == "gear":
-            canvas.create_oval(6, 12, 16, 22, outline=color, width=2)
-            for coords in ((10, 5, 12, 9), (10, 25, 12, 29), (3, 16, 6, 18), (16, 16, 19, 18)):
-                canvas.create_line(*coords, fill=color, width=2)
+            canvas.create_oval(cx - 4, cy - 4, cx + 4, cy + 4, outline=color, width=2)
+            canvas.create_oval(cx - 1, cy - 1, cx + 1, cy + 1, fill=color, width=0)
+            for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0),
+                           (-0.7, -0.7), (0.7, -0.7), (-0.7, 0.7), (0.7, 0.7)):
+                canvas.create_line(cx + dx * 6, cy + dy * 6, cx + dx * 8.5, cy + dy * 8.5,
+                                   fill=color, width=2, capstyle="round")
+
+    def _draw_search_icon(self, canvas: tk.Canvas, color: str = DIM) -> None:
+        canvas.delete("all")
+        canvas.create_oval(2, 2, 12, 12, outline=color, width=2)
+        canvas.create_line(11, 11, 16, 16, fill=color, width=2, capstyle="round")
+
+    def _draw_empty_icon(self, canvas: tk.Canvas, kind: str = "search") -> None:
+        """Крупная иконка пустого состояния: мягкая плашка + лупа/коробка."""
+        canvas.delete("all")
+        theme.rounded_rect(canvas, 1, 1, 63, 63, 18, fill=SURFACE_2, outline=LINE)
+        if kind == "search":
+            canvas.create_oval(21, 20, 39, 38, outline=ACCENT_SOFT_TEXT, width=2)
+            canvas.create_line(37, 36, 45, 44, fill=ACCENT_SOFT_TEXT, width=3,
+                               capstyle="round")
+        elif kind == "layers":
+            canvas.create_polygon(32, 20, 45, 28, 32, 36, 19, 28, fill="",
+                                  outline=ACCENT_SOFT_TEXT, width=2)
+            canvas.create_line(19, 35, 32, 43, 45, 35, fill=ACCENT_SOFT_TEXT, width=2)
+        else:
+            canvas.create_line(20, 28, 20, 44, 44, 44, 44, 28, fill=ACCENT_SOFT_TEXT,
+                               width=2, joinstyle="round")
+            canvas.create_line(20, 28, 32, 36, 44, 28, fill=ACCENT_SOFT_TEXT, width=2)
+            canvas.create_line(32, 36, 32, 44, fill=ACCENT_SOFT_TEXT, width=2)
+            canvas.create_line(25, 24, 39, 24, fill=ACCENT_SOFT_TEXT, width=2)
 
     def _nav_background(self, key: str, hover: bool = False) -> str:
         if key == self.view:
             return ACTIVE_BG
-        return HOVER_BG if hover else SOFT
+        return SURFACE_2 if hover else SOFT
 
     def _paint_nav(self, key: str, hover: bool = False) -> None:
+        """Нарисовать пункт меню: скруглённая плашка, акцентная полоска, иконка 19 px."""
         parts = self.nav_parts.get(key)
         if not parts:
             return
+        canvas = parts["canvas"]
+        canvas.delete("all")
+        width = canvas.winfo_width()
+        if width <= 1:
+            width = max(220, self.sidebar.winfo_width() - 24)
+        height = NAV_H
         active = key == self.view
-        bg = self._nav_background(key, hover)
-        for name in ("row", "bar", "icon", "label"):
-            parts[name].configure(bg=bg)
-        if not parts["badge"].cget("text"):
-            parts["badge"].configure(bg=bg)
-        parts["label"].configure(fg=(TEXT if active else (TEXT if hover else MUTED)),
-                                 font=(FONT_BOLD if active else FONT, 10))
-        self._draw_icon(parts["icon"], parts["kind"], ACCENT if active else (TEXT if hover else MUTED))
-        parts["bar"].delete("all")
+        if active or hover:
+            fill = ACTIVE_BG if active else SURFACE_2
+            theme.rounded_rect(canvas, 1, 1, width - 1, height - 1, 12,
+                               fill=fill, outline="")
         if active:
-            parts["bar"].create_rectangle(0, 7, 3, 29, fill=ACCENT, width=0)
+            theme.rounded_rect(canvas, 9, 12, 12, height - 12, 2, fill=ACCENT)
+        icon_color = ACCENT if active else (TEXT if hover else MUTED)
+        self._draw_icon(canvas, parts["kind"], icon_color, size=19,
+                        cx=30, cy=height // 2, clear=False)
+        title = self._nav_titles.get(key, "")
+        canvas.create_text(48, height // 2, text=i18n.tr(title), anchor="w",
+                           fill=(TEXT if (active or hover) else MUTED),
+                           font=(FONT_BOLD, 11, "bold") if active else (FONT, 11))
+        badge = str(parts.get("badge") or "")
+        if badge:
+            accent = bool(parts.get("accent"))
+            x2 = width - 12
+            x1 = x2 - (16 + max(1, len(badge)) * 7)
+            theme.rounded_rect(canvas, x1, 12, x2, 28, 8,
+                               fill=(ACCENT if accent else SURFACE_3), outline="")
+            canvas.create_text((x1 + x2) / 2, 20, text=badge,
+                               fill=("#170d04" if accent else MUTED),
+                               font=(FONT_BOLD, 9, "bold"))
 
     def _nav_hover(self, key: str, on: bool) -> None:
         if key != self.view:
@@ -404,21 +528,14 @@ class App:
     def _set_active_nav(self, view: str) -> None:
         for key in self.nav_parts:
             self._paint_nav(key)
-            parts = self.nav_parts[key]
-            parts["bar"].delete("all")
-            if key == view:
-                parts["bar"].create_rectangle(0, 7, 3, 29, fill=ACCENT, width=0)
 
     def set_badge(self, key: str, value: int | str, accent: bool = False) -> None:
         parts = self.nav_parts.get(key)
         if not parts:
             return
-        text = str(value) if value else ""
-        if text:
-            parts["badge"].configure(text=text, bg=(ACCENT if accent else "#2a2f3a"),
-                                     fg=("#1a0f04" if accent else DIM))
-        else:
-            parts["badge"].configure(text="", bg=self._nav_background(key))
+        parts["badge"] = str(value) if value else ""
+        parts["accent"] = bool(accent)
+        self._paint_nav(key)
 
     def toast(self, text: str, kind: str = "info") -> None:
         """Всплывающее уведомление снизу справа — чтобы события не терялись в строке статуса."""
@@ -479,9 +596,10 @@ class App:
             if chip is None:
                 continue
             if var.get():
-                chip.set_palette(bg="#3a2410", fg="#ffc79b", hover="#4a2e14")
+                chip.set_palette(bg=ACCENT_SOFT, fg=ACCENT_SOFT_TEXT, hover="#3f2814",
+                                 border=ACCENT_SOFT)
             else:
-                chip.set_palette(bg=PANEL, fg=MUTED, hover=ACTIVE_BG)
+                chip.set_palette(bg=SURFACE_2, fg=MUTED, hover=SURFACE_3, border=LINE)
 
     def refresh_all(self) -> None:
         """Перерисовать текущую вкладку и обновить счётчики в меню."""
@@ -611,6 +729,7 @@ class App:
             self.title_label._ru_text = titles[view]  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001
             pass
+        self._sync_header_tools()
         if view == "catalog":
             self.reload()
         elif view == "collections":
@@ -624,6 +743,19 @@ class App:
         else:
             self.render_settings()
         self._translate_ui(self.root)
+
+    def _sync_header_tools(self) -> None:
+        """Поиск и фильтры каталога живут только на вкладке каталога."""
+        show = self.view == "catalog"
+        for frame, pady in ((getattr(self, "tools_row", None), (16, 0)),
+                            (getattr(self, "chips_row", None), (10, 0))):
+            if frame is None:
+                continue
+            if show:
+                if not frame.winfo_manager():
+                    frame.pack(fill="x", pady=pady)
+            else:
+                frame.pack_forget()
 
     def _clear(self) -> None:
         for child in self.canvas.winfo_children():
@@ -645,7 +777,7 @@ class App:
                           font=(FONT, 9)).pack(side="left")
         accent = tk.Frame(head, bg=ACCENT, width=3)
         accent.pack(side="left", fill="y", padx=(14, 10), pady=2)
-        tk.Label(head, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 15), anchor="w").pack(
+        tk.Label(head, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 18, "bold"), anchor="w").pack(
             side="left")
         body = tk.Frame(self.page, bg=BG)
         body.pack(fill="both", expand=True)
@@ -689,9 +821,16 @@ class App:
                 height = max(bbox[3], self.canvas.winfo_height())
                 self.canvas.configure(scrollregion=(0, 0, bbox[2], height))
 
+        def fit_width(event=None) -> None:
+            width = event.width if event is not None else self.canvas.winfo_width()
+            if width > 100:
+                self.canvas.itemconfigure(window, width=width)
+
         frame.bind("<Configure>", sync_scroll)
         self.canvas.bind("<Configure>", sync_scroll, add="+")
-        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(window, width=e.width))
+        self.canvas.bind("<Configure>", fit_width, add="+")
+        fit_width()
+        self.root.after_idle(lambda: fit_width(None))
         self._cards_frame = frame
         return frame
 
@@ -745,7 +884,7 @@ class App:
                 width = 0
         if width <= 200:
             width = 1100
-        return max(2, min(10, width // (IMG_W + 36)))
+        return max(2, min(10, width // (IMG_W + CARD_GAP + 14)))
 
     def _on_resize(self, _event=None) -> None:
         """На широком окне показываем больше карточек в ряд (с задержкой)."""
@@ -767,6 +906,26 @@ class App:
             return
         self._render_cards(False)
 
+    def _empty_state(self, parent: tk.Misc, title: str, hint: str,
+                     icon: str = "search") -> tk.Frame:
+        """Пустое состояние: иконка на мягкой плашке, заголовок и подсказка."""
+        box = tk.Frame(parent, bg=BG)
+        canvas = tk.Canvas(box, width=64, height=64, bg=BG, highlightthickness=0, bd=0)
+        canvas.pack(pady=(0, 14))
+        self._draw_empty_icon(canvas, icon)
+        tk.Label(box, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 18, "bold")).pack()
+        tk.Label(box, text=hint, bg=BG, fg=MUTED, font=(FONT, 11), wraplength=520,
+                 justify="center").pack(pady=(6, 0))
+        return box
+
+    def _catalog_empty_hint(self) -> str:
+        filtered = bool(self.query or self.filter_game.get() or self.filter_image.get()
+                        or self.filter_fav.get() or self.category != "all")
+        if filtered:
+            return ("Попробуйте изменить запрос или сбросить фильтры — "
+                    "в каталоге тысячи модов.")
+        return "Нажмите «Обновить каталог», чтобы загрузить моды."
+
     def _render_cards(self, append: bool) -> None:
         frame = self._cards_frame if append and self._cards_frame else self._scrollable_frame()
         columns = self._grid_columns()
@@ -774,13 +933,20 @@ class App:
         # перерисовываем все карточки: проще и предсказуемее, чем считать индексы
         for child in frame.winfo_children():
             child.destroy()
+        if not self.items:
+            filtered = bool(self.query or self.filter_game.get() or self.filter_image.get()
+                            or self.filter_fav.get() or self.category != "all")
+            empty = self._empty_state(frame, "Ничего не найдено" if filtered else "Пока пусто",
+                                      self._catalog_empty_hint())
+            empty.pack(pady=(96, 40))
+            return
         for index, item in enumerate(self.items):
             row, col = divmod(index, columns)
             card = self._card(frame, item)
-            card.grid(row=row, column=col, padx=7, pady=7, sticky="n")
+            card.grid(row=row, column=col, padx=CARD_GAP // 2, pady=CARD_GAP // 2, sticky="n")
         more_row = (len(self.items) + columns - 1) // columns
         pager = tk.Frame(frame, bg=BG)
-        pager.grid(row=more_row, column=0, columnspan=columns, pady=16)
+        pager.grid(row=more_row, column=0, columnspan=columns, pady=18)
         page_size = 24
         pages = max(1, (self.total + page_size - 1) // page_size)
         current = self.page_no
@@ -863,6 +1029,10 @@ class App:
         self.total = data.get("total", self.total)
         self.page_no = (len(self.items) + 23) // 24
         self._render_cards(True)
+        try:
+            self.count_label.configure(text=f"{self.total} модов · стр. {self.page_no}")
+        except Exception:  # noqa: BLE001
+            pass
         self.root.after(120, lambda: self.canvas.yview_moveto(1.0))
 
     def _bind_click_tree(self, widget: tk.Misc, callback) -> None:
@@ -879,10 +1049,10 @@ class App:
                                    border=(DUP_LINE if duplicate else LINE),
                                    padding=8, width=IMG_W + 18)
         card = outer.body
-        holder = tk.Frame(card, bg="#0a0b0e", width=IMG_W, height=IMG_H)
+        holder = tk.Frame(card, bg=PANEL, width=IMG_W, height=IMG_H)
         holder.pack(fill="x")
         holder.pack_propagate(False)  # фиксированная высота, пока картинки нет
-        thumb = tk.Label(holder, bg="#0a0b0e", bd=0, text="", fg=DIM, font=(FONT, 8))
+        thumb = tk.Label(holder, bg=PANEL, bd=0, text="", fg=MUTED, font=(FONT, 9))
         thumb.pack(fill="both", expand=True)
         self._set_placeholder(thumb, item)
         if item.get("image"):
@@ -890,24 +1060,26 @@ class App:
         if duplicate:
             sources = ", ".join(SOURCE_NAMES.get(s, s) for s in item.get("duplicate_sources") or [])
             badge_text = f"дубликат · {item.get('duplicate_count')}"
-            badge = tk.Label(holder, text=badge_text, bg="#4a2a12", fg="#ffc79b",
-                             font=(FONT_BOLD, 8), padx=6, pady=2)
-            badge.place(relx=0, rely=1.0, x=6, y=-6, anchor="sw")
+            badge = tk.Label(holder, text=badge_text, bg=ACCENT_SOFT, fg=ACCENT_SOFT_TEXT,
+                             font=(FONT_BOLD, 9, "bold"), padx=8, pady=3)
+            badge.place(relx=0, rely=1.0, x=10, y=-10, anchor="sw")
             badge.bind("<Enter>", lambda _e, b=badge, s=sources: b.configure(
                 text=f"дубликат · ещё {s}" if s else b.cget("text")))
 
-        badge = tk.Frame(card, bg=PANEL)
-        badge.pack(fill="x", padx=10, pady=(8, 0))
-        tk.Label(badge, text=item.get("category_label", "Другое"), bg=PANEL, fg="#ffc79b",
-                 font=(FONT, 8)).pack(side="left")
+        badge_row = tk.Frame(card, bg=PANEL, height=16)
+        badge_row.pack(fill="x", padx=12, pady=(10, 0))
+        badge_row.pack_propagate(False)
+        tk.Label(badge_row, text=item.get("category_label", "Другое"), bg=PANEL,
+                 fg=ACCENT_SOFT_TEXT, font=(FONT, 9), anchor="w").pack(side="left")
         size = item.get("size_text") or ""
         if size:
-            tk.Label(badge, text=size, bg=PANEL, fg=DIM, font=(FONT, 8)).pack(side="right")
+            tk.Label(badge_row, text=size, bg=PANEL, fg=DIM, font=(FONT, 9),
+                     anchor="e").pack(side="right")
 
         title = item.get("title") or "Без названия"
-        label = tk.Label(card, text=title, bg=PANEL, fg=TEXT, font=(FONT_BOLD, 10),
-                         wraplength=CARD_W - 22, justify="left", anchor="w", height=2)
-        label.pack(fill="x", padx=10, pady=(4, 2))
+        label = tk.Label(card, text=title, bg=PANEL, fg=TEXT, font=(FONT_BOLD, 10, "bold"),
+                         wraplength=IMG_W - 26, justify="left", anchor="nw", height=2)
+        label.pack(fill="x", padx=12, pady=(5, 1))
 
         meta_bits = []
         if item.get("game_version"):
@@ -923,24 +1095,26 @@ class App:
             meta_bits.append(f"мод {item['version']}")
         if item.get("ago"):
             meta_bits.append(item["ago"])
-        tk.Label(card, text=" · ".join(meta_bits), bg=PANEL, fg=DIM, font=(FONT, 8),
-                 anchor="w").pack(fill="x", padx=10)
+        tk.Label(card, text=" · ".join(meta_bits), bg=PANEL, fg=DIM, font=(FONT, 9),
+                 anchor="w", height=1).pack(fill="x", padx=12)
 
-        actions = tk.Frame(card, bg=PANEL)
-        actions.pack(fill="x", padx=10, pady=(8, 10))
+        actions = tk.Frame(card, bg=PANEL, height=32)
+        actions.pack(fill="x", padx=12, pady=(10, 12))
+        actions.pack_propagate(False)
         text = "Установлен" if item.get("installed") else "Скачать"
         button = theme.RoundButton(actions, text, lambda i=item: self.install(i),
-                                   variant="primary", height=30, radius=8, font=(FONT_BOLD, 9))
+                                   variant="primary", height=32, radius=10,
+                                   font=(FONT_BOLD, 9, "bold"))
         button.pack(side="left", fill="x", expand=True)
-        star = tk.Button(actions, text="★" if item.get("favorite") else "☆", bg=PANEL,
-                         fg=("#ffd08a" if item.get("favorite") else MUTED), relief="flat",
-                         font=(FONT, 11), cursor="hand2", activebackground="#232833",
-                         activeforeground=TEXT)
+        star = theme.RoundButton(actions, "★" if item.get("favorite") else "☆",
+                                 width=34, height=32, radius=10, bg=PANEL,
+                                 fg=("#ffd08a" if item.get("favorite") else MUTED),
+                                 hover=SURFACE_3, font=(FONT, 11))
         star.configure(command=lambda i=item, b=star: self.toggle_favorite(i, b))
-        star.pack(side="left", padx=(4, 0))
-        tk.Button(actions, text="…", bg=PANEL, fg=MUTED, relief="flat", font=(FONT, 9),
-                  cursor="hand2", activebackground="#232833", activeforeground=TEXT,
-                  command=lambda i=item: self.details(i)).pack(side="left", padx=(4, 0))
+        star.pack(side="left", padx=(6, 0))
+        theme.RoundButton(actions, "⋯", lambda i=item: self.details(i),
+                          width=34, height=32, radius=10, bg=PANEL, fg=MUTED,
+                          hover=SURFACE_3, font=(FONT, 13)).pack(side="left", padx=(6, 0))
 
         self._bind_click_tree(card, lambda i=item: self.details(i))
         self._bind_card_hover(outer, duplicate)
@@ -949,6 +1123,7 @@ class App:
     def _bind_card_hover(self, card: tk.Canvas, duplicate: bool) -> None:
         """Подсветка рамки карточки при наведении — без мигания."""
         normal = DUP_LINE if duplicate else LINE_SOFT
+        hot = "#6b3a18" if duplicate else BORDER_STRONG
 
         def inside() -> bool:
             x, y = card.winfo_pointerxy()
@@ -961,7 +1136,7 @@ class App:
 
         def enter(_event=None) -> None:
             if hasattr(card, "set_border"):
-                card.set_border("#4a5364")
+                card.set_border(hot)
 
         def leave(_event=None) -> None:
             def restore() -> None:
@@ -989,30 +1164,50 @@ class App:
             return
         threading.Thread(target=self._load_image, args=(url, label, item or {}), daemon=True).start()
 
+    @staticmethod
+    def _rgb(color: str) -> tuple[int, int, int]:
+        value = color.lstrip("#")
+        return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+
+    def _round_top(self, image):
+        """Скруглить только верхние углы обложки — низ карточки остаётся прямым."""
+        if not HAS_PIL:
+            return image
+        from PIL import ImageDraw
+
+        width, height = image.size
+        mask = Image.new("L", (width, height * 2), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, width - 1, height * 2 - 1),
+                                               radius=IMG_RADIUS, fill=255)
+        mask = mask.crop((0, 0, width, height))
+        base = Image.new("RGB", (width, height), self._rgb(PANEL))
+        base.paste(image, (0, 0), mask)
+        return base
+
     def _set_placeholder(self, label: tk.Label, item: dict) -> None:
         """Заглушка вместо обложки: две буквы названия на плашке категории."""
         if not HAS_PIL:
-            label.configure(text=(item.get("title") or "")[:24], fg=MUTED, font=(FONT, 8))
+            label.configure(text=(item.get("title") or "")[:24], fg=MUTED, font=(FONT, 9))
             return
         title = (item.get("title") or "?").strip()
         letters = "".join(part[0] for part in title.split()[:2]).upper() or "?"
         colors = {"cars": (255, 122, 26), "maps": (60, 160, 220), "tools": (120, 200, 130),
                   "planes": (200, 160, 255), "bikes": (255, 200, 80), "boats": (90, 200, 210)}
         color = colors.get(item.get("category") or "other", (150, 155, 170))
-        image = Image.new("RGB", (IMG_W, IMG_H), (18, 20, 26))
+        image = Image.new("RGB", (IMG_W, IMG_H), self._rgb(PANEL))
         from PIL import ImageDraw
 
         draw = ImageDraw.Draw(image)
         try:
             from PIL import ImageFont
 
-            font = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", 44)
+            font = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", 46)
         except Exception:  # noqa: BLE001
             font = None
         box = draw.textbbox((0, 0), letters, font=font) if font else (0, 0, 40, 40)
         draw.text(((IMG_W - (box[2] - box[0])) / 2, (IMG_H - (box[3] - box[1])) / 2 - 6),
                   letters, fill=color, font=font)
-        photo = ImageTk.PhotoImage(image)
+        photo = ImageTk.PhotoImage(self._round_top(image))
         label.configure(image=photo)
         label.image = photo
 
@@ -1024,7 +1219,8 @@ class App:
             import io
 
             image = Image.open(io.BytesIO(raw)).convert("RGB")
-            image = image.resize((IMG_W, IMG_H), Image.LANCZOS)
+            image = ImageOps.fit(image, (IMG_W, IMG_H), Image.LANCZOS)
+            image = self._round_top(image)
         except Exception as exc:  # noqa: BLE001
             print(f"[tkui] картинка не загрузилась: {exc}")
             try:
@@ -1073,10 +1269,10 @@ class App:
     def details(self, item: dict) -> None:
         window = self._show_page(item.get("title") or "Мод")
         if item.get("image"):
-            holder = tk.Frame(window, bg="#0a0b0e", height=240)
+            holder = tk.Frame(window, bg=PANEL, height=240)
             holder.pack(fill="x", pady=(0, 8))
             holder.pack_propagate(False)
-            preview = tk.Label(holder, bg="#0a0b0e", bd=0, text="")
+            preview = tk.Label(holder, bg=PANEL, bd=0, text="")
             preview.pack(fill="both", expand=True)
             self._request_image(item["image"], preview, item)
 
@@ -1106,7 +1302,7 @@ class App:
         buttons = tk.Frame(window, bg=BG)
         buttons.pack(fill="x", padx=18, pady=(0, 16))
         theme.RoundButton(buttons, "Скачать", lambda: self.install(item), variant="primary",
-                          height=34, radius=9, font=(FONT_BOLD, 10)).pack(side="left")
+                          height=34, radius=9, font=(FONT_BOLD, 10, "bold")).pack(side="left")
         theme.RoundButton(buttons, "＋ В сборку", lambda: self.pick_collection_for_mod(item),
                           height=34, radius=9, bg=PANEL, fg=TEXT, hover=ACTIVE_BG,
                           font=(FONT, 10)).pack(side="left", padx=8)
@@ -1140,29 +1336,29 @@ class App:
                 colors = {"ok": "#8fe0a4", "missing": "#ffb3b3", "unknown": "#ffd6a3"}
                 status_color = {"проверено BeamHub": "#8fe0a4",
                                 "неизвестно": "#ffd6a3"}.get(verdict.get("file"), TEXT)
-                tk.Label(frame, text="Совместимость", bg=BG, fg=TEXT, font=(FONT_BOLD, 10),
+                tk.Label(frame, text="Совместимость", bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"),
                          anchor="w").pack(fill="x", pady=(6, 2))
                 tk.Label(frame,
                          text=f"Файл: {verdict.get('file')} — {file_info.get('detail', '')}",
-                         bg=BG, fg=status_color, font=(FONT, 8), anchor="w",
+                         bg=BG, fg=status_color, font=(FONT, 9), anchor="w",
                          wraplength=700, justify="left").pack(fill="x")
                 tk.Label(frame,
                          text=f"Версия игры: заявлено «{game.get('declared') or 'не указано'}», "
                               f"установлено «{game.get('installed') or 'не определено'}»",
-                         bg=BG, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x")
+                         bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
                 conflicts = compat.get("conflicts") or []
                 if conflicts:
                     names = ", ".join(row.get("title") or row.get("filename") or "?"
                                       for row in conflicts[:3])
                     tk.Label(frame, text=f"Возможные конфликты: {names}", bg=BG, fg="#ffb27a",
-                             font=(FONT, 8), anchor="w", wraplength=700,
+                             font=(FONT, 9), anchor="w", wraplength=700,
                              justify="left").pack(fill="x")
                 else:
                     tk.Label(frame, text="Конфликтов с установленными модами не найдено",
-                             bg=BG, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x")
+                             bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
             items = (similar or {}).get("items") or []
             if items:
-                tk.Label(frame, text="Похожие моды", bg=BG, fg=TEXT, font=(FONT_BOLD, 10),
+                tk.Label(frame, text="Похожие моды", bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"),
                          anchor="w").pack(fill="x", pady=(8, 2))
                 for row in items[:5]:
                     line = tk.Frame(frame, bg=BG)
@@ -1171,7 +1367,7 @@ class App:
                              font=(FONT, 9), anchor="w").pack(side="left", fill="x", expand=True)
                     theme.RoundButton(line, "Открыть",
                                       lambda r=row: self.details_by_id(r["id"]),
-                                      height=24, radius=8, font=(FONT, 8)).pack(side="right")
+                                      height=24, radius=8, font=(FONT, 9)).pack(side="right")
             self._translate_ui(window)
         self.root.after(0, apply)
 
@@ -1216,7 +1412,7 @@ class App:
                           f"сборок: {data.get('collections', 0)} · "
                           f"установок: {data.get('installs', 0)} · "
                           f"просмотров: {data.get('views', 0)}",
-                     bg=BG, fg=TEXT, font=(FONT_BOLD, 10), anchor="w", wraplength=760,
+                     bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"), anchor="w", wraplength=760,
                      justify="left").pack(fill="x", padx=18, pady=(14, 2))
             tk.Label(inner, text=f"Комментариев: {data.get('comments', 0)} · "
                                  f"оценок: {data.get('ratings', 0)} · "
@@ -1224,7 +1420,7 @@ class App:
                      bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", padx=18)
 
             def section(title: str) -> None:
-                tk.Label(inner, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                tk.Label(inner, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                          anchor="w").pack(fill="x", padx=18, pady=(12, 2))
 
             section("Популярные моды (по установкам)")
@@ -1262,7 +1458,7 @@ class App:
                          anchor="w").pack(fill="x", padx=24)
             for row in activity[-14:]:
                 tk.Label(inner, text=f"{row.get('day')} · {row.get('kind')}: {row.get('events')}",
-                         bg=BG, fg=MUTED, font=(FONT, 8), anchor="w").pack(fill="x", padx=24)
+                         bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=24)
             self._translate_ui(window)
 
         render()
@@ -1304,8 +1500,9 @@ class App:
                   font=(FONT, 9), padx=12, pady=5, cursor="hand2",
                   command=self.match_library).pack(side="right")
         if not items:
-            tk.Label(frame, text="Пока пусто. Установите мод из каталога.", bg=BG, fg=MUTED,
-                     font=(FONT, 11)).pack(anchor="w", pady=20)
+            self._empty_state(frame, "Библиотека пуста",
+                              "Пока пусто. Установите мод из каталога.",
+                              "box").pack(pady=44)
             return
         for row in items:
             line = tk.Frame(frame, bg=(DUP_BG if row.get("duplicate") else PANEL),
@@ -1317,24 +1514,24 @@ class App:
             info.pack(side="left", fill="x", expand=True, padx=12, pady=8)
             shown_title = row.get("catalog_title") or row.get("title") or row.get("filename")
             tk.Label(info, text=shown_title, bg=row_bg, fg=TEXT,
-                     font=(FONT_BOLD, 10), anchor="w").pack(fill="x")
+                     font=(FONT_BOLD, 10, "bold"), anchor="w").pack(fill="x")
             tk.Label(info, text=f"{row.get('filename')} · {row.get('size_text')} · "
                                 f"{row.get('installed_text')}",
-                     bg=row_bg, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+                     bg=row_bg, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
             state = tk.Label(line, text="включён" if row.get("active") else "выключен",
                              bg=row_bg, fg=(GREEN if row.get("active") else "#ff9a9a"),
-                             font=(FONT, 8))
+                             font=(FONT, 9))
             state.pack(side="left", padx=8)
             if row.get("duplicate"):
                 reason = row.get("duplicate_reason") or "файл"
                 tk.Label(line, text=f"ДУБЛИКАТ ({reason})", bg=DUP_BG, fg="#ff8f8f",
-                         font=(FONT_BOLD, 8)).pack(side="left", padx=4)
+                         font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=4)
             if not row.get("matched"):
                 tk.Label(line, text="не привязан", bg=row_bg, fg=DIM,
-                         font=(FONT, 8)).pack(side="left", padx=4)
+                         font=(FONT, 9)).pack(side="left", padx=4)
             if row.get("update_available"):
                 tk.Label(line, text=f"обновление {row.get('catalog_version')}", bg=PANEL,
-                         fg="#ffd6a3", font=(FONT, 8)).pack(side="left", padx=4)
+                         fg="#ffd6a3", font=(FONT, 9)).pack(side="left", padx=4)
             tk.Button(line, text="Выключить" if row.get("active") else "Включить",
                       bg=PANEL, fg=TEXT, relief="flat", font=(FONT, 9), cursor="hand2",
                       command=lambda r=row: self.toggle_mod(r)).pack(side="left", padx=4)
@@ -1460,11 +1657,11 @@ class App:
         head = tk.Frame(window, bg=BG)
         head.pack(fill="x", padx=20, pady=(18, 4))
         badge = tk.Label(head, text=(nick[:1] or "?").upper(), bg=ACCENT, fg="#111318",
-                         font=(FONT_BOLD, 20), width=2, height=1)
+                         font=(FONT_BOLD, 18, "bold"), width=2, height=1)
         badge.pack(side="left")
         names = tk.Frame(head, bg=BG)
         names.pack(side="left", padx=12)
-        tk.Label(names, text=nick, bg=BG, fg=TEXT, font=(FONT_BOLD, 16),
+        tk.Label(names, text=nick, bg=BG, fg=TEXT, font=(FONT_BOLD, 18, "bold"),
                  anchor="w").pack(fill="x")
         meta = " · ".join(filter(None, [user.get("email"),
                                         f"с {human_date(user.get('created_at'))}"
@@ -1489,14 +1686,14 @@ class App:
         for index, (label, value) in enumerate(numbers):
             cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             cell.grid(row=0, column=index, sticky="nsew", padx=(0, 6))
-            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 14),
+            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 13, "bold"),
                      anchor="w").pack(fill="x", padx=10, pady=(8, 0))
-            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 8),
+            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 9),
                      anchor="w").pack(fill="x", padx=10, pady=(0, 8))
         for index in range(len(numbers)):
             cards.grid_columnconfigure(index, weight=1)
 
-        tk.Label(window, text="Опубликованные сборки", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+        tk.Label(window, text="Опубликованные сборки", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                  anchor="w").pack(fill="x", padx=20, pady=(12, 2))
         collections_list = user.get("collections") or []
         if not collections_list:
@@ -1510,17 +1707,17 @@ class App:
                         f" ({rating.get('count', 0)}) · {row.get('installs', 0)} установок")
             tk.Label(line, text=row.get("title") or "сборка", bg=BG, fg=TEXT, font=(FONT, 9),
                      anchor="w").pack(side="left")
-            tk.Label(line, text=subtitle, bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(
+            tk.Label(line, text=subtitle, bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(
                 side="left", padx=8)
             theme.RoundButton(line, "Открыть",
                               lambda c=row.get("id"): self.collection_details(c),
-                              height=24, radius=8, font=(FONT, 8)).pack(side="right")
+                              height=24, radius=8, font=(FONT, 9)).pack(side="right")
 
         actions = tk.Frame(window, bg=BG)
         actions.pack(fill="x", padx=20, pady=16)
         theme.RoundButton(actions, "Мои сборки", self._menu_my_collections,
                           variant="primary", height=32, radius=9,
-                          font=(FONT_BOLD, 9)).pack(side="left")
+                          font=(FONT_BOLD, 9, "bold")).pack(side="left")
         theme.RoundButton(actions, "Настройки", lambda: self.switch("settings"),
                           height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
         theme.RoundButton(actions, "Закрыть", window.destroy, height=32, radius=9,
@@ -1538,7 +1735,7 @@ class App:
 
         mode = {"value": "login"}
 
-        tk.Label(window, text="BeamHub", bg=BG, fg=ACCENT, font=(FONT_BOLD, 16),
+        tk.Label(window, text="BeamHub", bg=BG, fg=ACCENT, font=(FONT_BOLD, 18, "bold"),
                  anchor="w").pack(fill="x", padx=20, pady=(16, 2))
         subtitle = tk.Label(window, text="Войдите, чтобы публиковать сборки и ставить оценки",
                             bg=BG, fg=DIM, font=(FONT, 9), anchor="w", wraplength=370,
@@ -1583,7 +1780,7 @@ class App:
 
             theme.RoundButton(cloud_actions, "Войти по email", lambda: cloud_submit("login"),
                               variant="primary", height=32, radius=9,
-                              font=(FONT_BOLD, 9)).pack(side="left")
+                              font=(FONT_BOLD, 9, "bold")).pack(side="left")
             theme.RoundButton(cloud_actions, "Создать аккаунт", lambda: cloud_submit("signup"),
                               height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
 
@@ -1623,7 +1820,7 @@ class App:
         actions = tk.Frame(window, bg=BG)
         actions.pack(fill="x", padx=20, pady=12)
         submit_button = theme.RoundButton(actions, "Войти", submit, variant="primary",
-                                          height=34, radius=9, font=(FONT_BOLD, 10))
+                                          height=34, radius=9, font=(FONT_BOLD, 10, "bold"))
         submit_button.pack(side="left")
         title_button = theme.RoundButton(actions, "Создать аккаунт", toggle_mode, height=34,
                                          radius=9, font=(FONT, 9))
@@ -1633,7 +1830,7 @@ class App:
             nickname.pack_forget()
             actions.pack_forget()
             local_link = tk.Label(window, text="У меня локальный аккаунт без облака",
-                                  bg=BG, fg=MUTED, font=(FONT, 8, "underline"),
+                                  bg=BG, fg=MUTED, font=(FONT, 9, "underline"),
                                   cursor="hand2", anchor="w")
             local_link.pack(fill="x", padx=20, pady=(0, 8))
 
@@ -1645,7 +1842,7 @@ class App:
             local_link.bind("<Button-1>", lambda _e: show_local())
         tk.Label(window, text="Облачный аккаунт: email и пароль. Локальный вход работает "
                            "без облака и без интернета.",
-                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w", wraplength=370, justify="left"
+                 bg=BG, fg=DIM, font=(FONT, 9), anchor="w", wraplength=370, justify="left"
                  ).pack(fill="x", padx=20, pady=(0, 12))
         email.focus_set()
         self._translate_ui(window)
@@ -1691,7 +1888,7 @@ class App:
         if self.user:
             theme.RoundButton(toolbar, "＋ Создать сборку", self.create_collection,
                               variant="primary", height=30, radius=9,
-                              font=(FONT_BOLD, 9)).pack(side="right")
+                              font=(FONT_BOLD, 9, "bold")).pack(side="right")
         else:
             theme.RoundButton(toolbar, "Войти", self.open_auth, height=30, radius=9,
                               font=(FONT, 9)).pack(side="right")
@@ -1735,7 +1932,8 @@ class App:
         if not items:
             text = ("У вас пока нет сборок — создайте первую." if self.coll_kind == "mine"
                     else "Пока никто не опубликовал сборок. Будьте первым!")
-            tk.Label(frame, text=text, bg=BG, fg=MUTED, font=(FONT, 11)).pack(anchor="w", pady=20)
+            self._empty_state(frame, "Сборок пока нет", text,
+                              "layers").pack(pady=44)
             return
         for coll in items:
             self._collection_row(frame, coll)
@@ -1745,7 +1943,7 @@ class App:
                        cursor="hand2")
         row.pack(fill="x", pady=4)
         cover = tk.Label(row, text=(coll.get("title") or "?")[:2].upper(), bg="#241a10",
-                         fg=ACCENT, font=(FONT_BOLD, 16), width=6, height=3)
+                         fg=ACCENT, font=(FONT_BOLD, 18, "bold"), width=6, height=3)
         cover.pack(side="left", padx=(10, 12), pady=8)
         if coll.get("cover"):
             try:
@@ -1762,18 +1960,18 @@ class App:
         info = tk.Frame(row, bg=PANEL)
         info.pack(side="left", fill="x", expand=True, pady=8)
         tk.Label(info, text=coll.get("title") or "Без названия", bg=PANEL, fg=TEXT,
-                 font=(FONT_BOLD, 12), anchor="w").pack(fill="x")
+                 font=(FONT_BOLD, 13, "bold"), anchor="w").pack(fill="x")
         rating = coll.get("rating") or {}
         meta = (f"{coll.get('owner_nickname') or 'автор'} · "
                 f"{self._category_label(coll.get('category'))} · "
                 f"{coll.get('items_count', 0)} модов · "
                 f"★ {rating.get('avg', 0):.1f} ({rating.get('count', 0)}) · "
                 f"{coll.get('installs', 0)} установок")
-        tk.Label(info, text=meta, bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+        tk.Label(info, text=meta, bg=PANEL, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
         tags = coll.get("tags") or []
         if tags:
             tk.Label(info, text=" · ".join("#" + t for t in tags[:6]), bg=PANEL, fg="#9fb4d8",
-                     font=(FONT, 8), anchor="w").pack(fill="x")
+                     font=(FONT, 9), anchor="w").pack(fill="x")
         theme.RoundButton(row, "Открыть", lambda c=coll["id"]: self.collection_details(c),
                           height=30, radius=8, font=(FONT, 9)).pack(side="right", padx=12)
         self._bind_click_tree(row, lambda c=coll["id"]: self.collection_details(c))
@@ -1791,7 +1989,7 @@ class App:
     def _inline_form(self, frame: tk.Frame, title: str) -> tk.Frame:
         card = tk.Frame(frame, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
         card.pack(fill="x", pady=(0, 10))
-        tk.Label(card, text=title, bg=PANEL, fg=TEXT, font=(FONT_BOLD, 11),
+        tk.Label(card, text=title, bg=PANEL, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                  anchor="w").pack(fill="x", padx=14, pady=(10, 2))
         return card
 
@@ -1835,7 +2033,7 @@ class App:
         cover_row.pack(fill="x")
         cover_label = tk.Label(cover_row, text=cover_state["path"] or "не выбрана",
                                bg=PANEL, fg=(TEXT if cover_state["path"] else DIM),
-                               font=(FONT, 8), anchor="w")
+                               font=(FONT, 9), anchor="w")
         cover_label.pack(side="left", fill="x", expand=True)
 
         def choose_cover() -> None:
@@ -1857,7 +2055,7 @@ class App:
             cover_label.configure(text=cover_state["path"], fg="#8fe0a4")
 
         theme.RoundButton(cover_row, "Выбрать фото", choose_cover, height=26, radius=8,
-                          font=(FONT, 8)).pack(side="right")
+                          font=(FONT, 9)).pack(side="right")
         status = tk.Label(body, text="", bg=PANEL, fg="#ffb3b3", font=(FONT, 9), anchor="w")
         status.pack(fill="x", pady=(4, 0))
 
@@ -1887,7 +2085,7 @@ class App:
         actions = tk.Frame(body, bg=PANEL)
         actions.pack(fill="x", pady=(8, 0))
         theme.RoundButton(actions, "Сохранить", save, variant="primary", height=30, radius=8,
-                          font=(FONT_BOLD, 9)).pack(side="left")
+                          font=(FONT_BOLD, 9, "bold")).pack(side="left")
         theme.RoundButton(actions, "Отмена", close, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left", padx=8)
         title.focus_set()
@@ -1919,9 +2117,7 @@ class App:
         window = self._show_page(coll.get("title") or "Сборка")
 
         head = tk.Frame(window, bg=BG)
-        head.pack(fill="x", padx=20, pady=(16, 4))
-        tk.Label(head, text=coll.get("title"), bg=BG, fg=TEXT, font=(FONT_BOLD, 16),
-                 anchor="w").pack(fill="x")
+        head.pack(fill="x", padx=20, pady=(8, 4))
         owner = (coll.get("owner") or {}).get("nickname") or "автор"
         tk.Label(head, text=f"{owner} · {self._category_label(coll.get('category'))} · "
                             f"v{coll.get('version')} · ★ {rating.get('avg', 0):.1f} "
@@ -1944,7 +2140,7 @@ class App:
             actions,
             "Установить сборку" + (f" ({missing_count})" if missing_count else ""),
             lambda: self.apply_collection(coll_id), variant="primary",
-            height=32, radius=9, font=(FONT_BOLD, 9)).pack(side="left")
+            height=32, radius=9, font=(FONT_BOLD, 9, "bold")).pack(side="left")
         if not coll.get("is_owner"):
             theme.RoundButton(actions, "Пожаловаться",
                               lambda: self.report_dialog("collection", coll_id,
@@ -1970,7 +2166,7 @@ class App:
 
         tk.Label(window, text=f"Состав: {len(coll.get('items', []))} модов · "
                               f"установлено {len(installed)}",
-                 bg=BG, fg=TEXT, font=(FONT_BOLD, 10), anchor="w").pack(fill="x", padx=20,
+                 bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"), anchor="w").pack(fill="x", padx=20,
                                                                        pady=(4, 4))
         inner = tk.Frame(window, bg=BG)
         inner.pack(fill="both", expand=True, padx=0)
@@ -1980,23 +2176,23 @@ class App:
             mark = "✓" if item["mod_id"] in installed else str(index)
             tk.Label(line, text=mark, bg=("#16241a" if item["mod_id"] in installed else PANEL),
                      fg=("#8fe0a4" if item["mod_id"] in installed else DIM),
-                     font=(FONT_BOLD, 10), width=3).pack(side="left", padx=6, pady=6)
+                     font=(FONT_BOLD, 10, "bold"), width=3).pack(side="left", padx=6, pady=6)
             info = tk.Frame(line, bg=PANEL)
             info.pack(side="left", fill="x", expand=True, pady=6)
             tk.Label(info, text=item.get("title") or item["mod_id"], bg=PANEL, fg=TEXT,
                      font=(FONT, 10), anchor="w").pack(fill="x")
             tk.Label(info, text=f"{item.get('category') or ''} · {item.get('size_text') or ''}",
-                     bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+                     bg=PANEL, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
             if coll.get("is_owner"):
                 theme.RoundButton(line, "Убрать",
                                   lambda m=item["mod_id"]: self.remove_from_collection(coll_id, m),
-                                  height=28, radius=8, font=(FONT, 8)).pack(side="right", padx=8)
+                                  height=28, radius=8, font=(FONT, 9)).pack(side="right", padx=8)
 
         history = coll.get("versions") or []
         if history:
             tk.Label(window, text="История версий: " + ", ".join(
                 f"v{v['version']} ({v.get('count', 0)} модов)" for v in history[:6]),
-                bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", padx=20, pady=(6, 12))
+                bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", padx=20, pady=(6, 12))
         self._translate_ui(window)
 
     # ---------------------------------------------------------------- отзывы
@@ -2034,7 +2230,7 @@ class App:
             if self.user:
                 box = tk.Frame(body, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
                 box.pack(fill="x", pady=6)
-                tk.Label(box, text="Ваша оценка", bg=PANEL, fg=TEXT, font=(FONT_BOLD, 10),
+                tk.Label(box, text="Ваша оценка", bg=PANEL, fg=TEXT, font=(FONT_BOLD, 10, "bold"),
                          anchor="w").pack(fill="x", padx=10, pady=(8, 2))
                 star_row = tk.Frame(box, bg=PANEL)
                 star_row.pack(anchor="w", padx=10)
@@ -2054,7 +2250,7 @@ class App:
                     button = theme.RoundButton(
                         star_row, "★" if value <= stars_var["value"] else "☆",
                         lambda v=value: (stars_var.update({"value": v}), paint(v)),
-                        width=36, height=32, radius=8, font=(FONT, 14), bg=PANEL,
+                        width=36, height=32, radius=8, font=(FONT, 13), bg=PANEL,
                         fg="#ffd08a", hover=ACTIVE_BG)
                     button.pack(side="left", padx=2)
                     button.bind("<Enter>", lambda _e, v=value: preview(v), add="+")
@@ -2094,7 +2290,7 @@ class App:
                 actions = tk.Frame(box, bg=PANEL)
                 actions.pack(fill="x", padx=10, pady=(0, 8))
                 theme.RoundButton(actions, "Сохранить оценку", save_rating, variant="primary",
-                                  height=30, radius=8, font=(FONT_BOLD, 9)).pack(side="left")
+                                  height=30, radius=8, font=(FONT_BOLD, 9, "bold")).pack(side="left")
                 theme.RoundButton(actions, "Удалить оценку", clear_rating, height=30, radius=8,
                                   font=(FONT, 9)).pack(side="left", padx=8)
             else:
@@ -2103,10 +2299,10 @@ class App:
                 tk.Label(row, text="Войдите, чтобы оценивать и писать отзывы", bg=BG, fg=DIM,
                          font=(FONT, 9)).pack(side="left")
                 theme.RoundButton(row, "Войти", self.open_auth, variant="primary", height=30,
-                                  radius=8, font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+                                  radius=8, font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=8)
 
             reviews = [r for r in reviews_data.get("items", []) if r.get("review")]
-            tk.Label(body, text="Отзывы", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+            tk.Label(body, text="Отзывы", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                      anchor="w").pack(fill="x", pady=(10, 2))
             if not reviews:
                 tk.Label(body, text="Пока никто не написал отзыв.", bg=BG, fg=DIM,
@@ -2119,17 +2315,17 @@ class App:
                 tk.Label(head_line, text="★" * review["stars"], bg=PANEL, fg="#ffd08a",
                          font=(FONT, 9)).pack(side="left")
                 tk.Label(head_line, text=review["nickname"], bg=PANEL, fg=TEXT,
-                         font=(FONT_BOLD, 9)).pack(side="left", padx=6)
+                         font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=6)
                 if review.get("installed"):
                     tk.Label(head_line, text="✓ установил", bg="#16241a", fg="#8fe0a4",
-                             font=(FONT, 8), padx=6).pack(side="left")
+                             font=(FONT, 9), padx=6).pack(side="left")
                 tk.Label(line, text=review["review"], bg=PANEL, fg=MUTED, font=(FONT, 9),
                          wraplength=820, justify="left", anchor="w").pack(
                     fill="x", padx=10, pady=(2, 8))
 
             comments = comments_data.get("items") or []
             if comments:
-                tk.Label(body, text="Обсуждение", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+                tk.Label(body, text="Обсуждение", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                          anchor="w").pack(fill="x", pady=(12, 2))
 
                 def comment_block(parent: tk.Misc, comment: dict, depth: int = 0) -> None:
@@ -2141,9 +2337,9 @@ class App:
                     top.pack(fill="x", padx=10, pady=(6, 0))
                     author = comment.get("author") or {}
                     tk.Label(top, text=author.get("nickname") or "?", bg=PANEL, fg=TEXT,
-                             font=(FONT_BOLD, 9)).pack(side="left")
+                             font=(FONT_BOLD, 9, "bold")).pack(side="left")
                     tk.Label(top, text=" · " + human_ago(comment.get("created_at")), bg=PANEL,
-                             fg=DIM, font=(FONT, 8)).pack(side="left")
+                             fg=DIM, font=(FONT, 9)).pack(side="left")
                     if comment.get("deleted"):
                         tk.Label(line, text="Комментарий удалён", bg=PANEL, fg=DIM,
                                  font=(FONT, 9), anchor="w").pack(fill="x", padx=10, pady=(2, 8))
@@ -2158,7 +2354,7 @@ class App:
                             tools, "Удалить",
                             lambda c=comment: (self.api.post(
                                 "/api/comments/delete", {"id": c["id"]}), render())[-1],
-                            height=26, radius=8, font=(FONT, 8)).pack(side="left")
+                            height=26, radius=8, font=(FONT, 9)).pack(side="left")
                     for reply in comment.get("replies") or []:
                         comment_block(parent, reply, depth + 1)
 
@@ -2184,7 +2380,7 @@ class App:
         window.title("Жалоба")
         window.geometry("460x330")
         window.transient(self.root)
-        tk.Label(window, text="На что жалуетесь?", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+        tk.Label(window, text="На что жалуетесь?", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                  anchor="w").pack(fill="x", padx=18, pady=(14, 2))
         if title:
             tk.Label(window, text=title[:120], bg=BG, fg=DIM, font=(FONT, 9), anchor="w",
@@ -2214,7 +2410,7 @@ class App:
         buttons = tk.Frame(window, bg=BG)
         buttons.pack(fill="x", padx=18, pady=10)
         theme.RoundButton(buttons, "Отправить", send, variant="primary", height=30, radius=8,
-                          font=(FONT_BOLD, 9)).pack(side="left")
+                          font=(FONT_BOLD, 9, "bold")).pack(side="left")
         theme.RoundButton(buttons, "Отмена", window.destroy, height=30, radius=8,
                           font=(FONT, 9)).pack(side="left", padx=8)
         self._translate_ui(window)
@@ -2251,9 +2447,9 @@ class App:
         for index, (label, value) in enumerate(numbers):
             cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             cell.grid(row=index // 4, column=index % 4, sticky="nsew", padx=(0, 6), pady=(0, 6))
-            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 16),
+            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 18, "bold"),
                      anchor="w").pack(fill="x", padx=10, pady=(8, 0))
-            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(
+            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 9), anchor="w").pack(
                 fill="x", padx=10, pady=(0, 8))
         for column in range(4):
             cards.grid_columnconfigure(column, weight=1)
@@ -2266,13 +2462,13 @@ class App:
                  bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
         paths = data.get("paths") or {}
         tk.Label(page, text=f"Моды: {paths.get('mods_dir') or '—'}",
-                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", pady=(2, 0))
+                 bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", pady=(2, 0))
         tk.Label(page, text=f"Игра: {paths.get('game_path') or '—'}",
-                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+                 bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
         tk.Label(page, text=f"Данные: {paths.get('data_dir') or '—'}",
-                 bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+                 bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
 
-        tk.Label(page, text="События", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+        tk.Label(page, text="События", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                  anchor="w").pack(fill="x", pady=(12, 2))
         events = data.get("events") or []
         tk.Label(page, text=" · ".join(f"{row['kind']}: {row['n']}" for row in events) or "нет",
@@ -2281,7 +2477,7 @@ class App:
         for row in recent[:10]:
             target = row.get("mod_id") or row.get("collection_id") or ""
             tk.Label(page, text=f"{human_ago(row.get('created_at'))} · {row.get('kind')} {target}",
-                     bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+                     bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
 
     def moderation_panel(self) -> None:
         if not self.is_moderator():
@@ -2334,10 +2530,10 @@ class App:
                                  f"заблокировано: {overview.get('blocked_users', 0)} · "
                                  f"модераторов: {overview.get('moderators', 0)} · "
                                  f"действий за сутки: {overview.get('actions_24h', 0)}",
-                     bg=BG, fg=TEXT, font=(FONT_BOLD, 10), anchor="w").pack(
+                     bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"), anchor="w").pack(
                 fill="x", padx=18, pady=(14, 8))
 
-            tk.Label(inner, text="Очередь жалоб", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+            tk.Label(inner, text="Очередь жалоб", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                      anchor="w").pack(fill="x", padx=18)
             if not reports.get("items"):
                 tk.Label(inner, text="Пусто — жалоб нет.", bg=BG, fg=DIM, font=(FONT, 9),
@@ -2348,9 +2544,9 @@ class App:
                 top = tk.Frame(card, bg=PANEL)
                 top.pack(fill="x", padx=10, pady=(6, 0))
                 tk.Label(top, text=f"{report.get('target_type')} · {report.get('reason')}",
-                         bg=PANEL, fg="#ffc79b", font=(FONT_BOLD, 9)).pack(side="left")
+                         bg=PANEL, fg="#ffc79b", font=(FONT_BOLD, 9, "bold")).pack(side="left")
                 tk.Label(top, text=f" · от {report.get('reporter_nickname') or '?'}", bg=PANEL,
-                         fg=DIM, font=(FONT, 8)).pack(side="left")
+                         fg=DIM, font=(FONT, 9)).pack(side="left")
                 tk.Label(card, text=(report.get("preview") or "(без текста)")[:140], bg=PANEL,
                          fg=TEXT, font=(FONT, 9), wraplength=760, justify="left", anchor="w",
                          height=1).pack(fill="x", padx=10, pady=(2, 4))
@@ -2360,24 +2556,24 @@ class App:
                 theme.RoundButton(
                     tools, "Удалить и закрыть",
                     lambda r=report: resolve(r["id"], "resolve_delete"),
-                    variant="primary", height=26, radius=8, font=(FONT, 8)).pack(side="left")
+                    variant="primary", height=26, radius=8, font=(FONT, 9)).pack(side="left")
                 theme.RoundButton(tools, "Отклонить",
                                   lambda r=report: resolve(r["id"], "reject"),
-                                  height=26, radius=8, font=(FONT, 8)).pack(side="left", padx=6)
+                                  height=26, radius=8, font=(FONT, 9)).pack(side="left", padx=6)
                 if target_user.get("id") and not target_user.get("blocked"):
                     theme.RoundButton(
                         tools, f"Блокировать {target_user.get('nickname')}",
                         lambda u=target_user["id"]: block(u),
-                        height=26, radius=8, font=(FONT, 8)).pack(side="left")
+                        height=26, radius=8, font=(FONT, 9)).pack(side="left")
 
-            tk.Label(inner, text="Журнал действий", bg=BG, fg=TEXT, font=(FONT_BOLD, 11),
+            tk.Label(inner, text="Журнал действий", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
                      anchor="w").pack(fill="x", padx=18, pady=(12, 2))
             for entry in log.get("items", [])[:25]:
                 tk.Label(inner,
                          text=f"{entry.get('actor_nickname') or '?'} · {entry.get('action')} · "
                               f"{entry.get('target_type')} {entry.get('target_id')} · "
                               f"{human_ago(entry.get('created_at'))}",
-                         bg=BG, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x", padx=18)
+                         bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", padx=18)
             self._translate_ui(window)
 
         render()
@@ -2519,7 +2715,7 @@ class App:
                      bg=BG, fg="#8fe0a4", font=(FONT, 9), anchor="w").pack(fill="x", pady=(4, 2))
         row = tk.Frame(block, bg=BG)
         row.pack(fill="x", pady=(4, 0))
-        tk.Label(row, text="Project URL", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        tk.Label(row, text="Project URL", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
         url_var = tk.StringVar(value=settings.get("cloud_url") or "")
         url_entry = tk.Entry(row, textvariable=url_var, bg=PANEL, fg=TEXT, relief="flat",
                              insertbackground=TEXT, font=(FONT, 9))
@@ -2528,7 +2724,7 @@ class App:
             row.pack_forget()
         row2 = tk.Frame(block, bg=BG)
         row2.pack(fill="x", pady=(4, 0))
-        tk.Label(row2, text="anon key", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        tk.Label(row2, text="anon key", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
         key_var = tk.StringVar(value=settings.get("cloud_anon_key") or "")
         key_entry = tk.Entry(row2, textvariable=key_var, bg=PANEL, fg=TEXT, relief="flat",
                              insertbackground=TEXT, font=(FONT, 9), show="•")
@@ -2554,7 +2750,7 @@ class App:
         logged = bool(self.user)
         if logged:
             tk.Label(block, text=f"Вы вошли как {(self.user or {}).get('nickname')}",
-                     bg=BG, fg="#8fe0a4", font=(FONT_BOLD, 10), anchor="w").pack(
+                     bg=BG, fg="#8fe0a4", font=(FONT_BOLD, 10, "bold"), anchor="w").pack(
                 fill="x", pady=(6, 0))
             sync_row = tk.Frame(block, bg=BG)
             sync_row.pack(fill="x", pady=(4, 0))
@@ -2567,19 +2763,19 @@ class App:
             configured = cloud.configured()
             tk.Label(block, text=("Облако подключено" if configured else
                                   "Облако не подключено — данные только на этом компьютере"),
-                     bg=BG, fg=("#8fe0a4" if configured else DIM), font=(FONT, 8),
+                     bg=BG, fg=("#8fe0a4" if configured else DIM), font=(FONT, 9),
                      anchor="w").pack(fill="x", pady=(4, 0))
             return
         mail_row = tk.Frame(block, bg=BG)
         mail_row.pack(fill="x", pady=(6, 0))
-        tk.Label(mail_row, text="email", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        tk.Label(mail_row, text="email", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
         self._cloud_email_var = tk.StringVar()
         tk.Entry(mail_row, textvariable=self._cloud_email_var, bg=PANEL, fg=TEXT,
                  relief="flat", insertbackground=TEXT, font=(FONT, 9)).pack(
             side="left", fill="x", expand=True, padx=8, ipady=3)
         pass_row = tk.Frame(block, bg=BG)
         pass_row.pack(fill="x", pady=(4, 0))
-        tk.Label(pass_row, text="пароль", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
+        tk.Label(pass_row, text="пароль", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
         self._cloud_pass_var = tk.StringVar()
         tk.Entry(pass_row, textvariable=self._cloud_pass_var, bg=PANEL, fg=TEXT, relief="flat",
                  insertbackground=TEXT, font=(FONT, 9), show="•").pack(
@@ -2588,7 +2784,7 @@ class App:
         mail_buttons.pack(fill="x", pady=(6, 0))
         theme.RoundButton(mail_buttons, "Войти по email", lambda: self.email_auth("login"),
                           variant="primary", height=30, radius=8,
-                          font=(FONT_BOLD, 9)).pack(side="left")
+                          font=(FONT_BOLD, 9, "bold")).pack(side="left")
         theme.RoundButton(mail_buttons, "Создать аккаунт", lambda: self.email_auth("signup"),
                           height=30, radius=8, font=(FONT, 9)).pack(side="left", padx=8)
         theme.RoundButton(buttons, "Мои сборки в облако", self.sync_push, height=30, radius=8,
@@ -2599,7 +2795,7 @@ class App:
         tk.Label(block,
                  text=("Подключено: сборки и профиль могут синхронизироваться" if configured
                        else "Не подключено — аккаунты и сборки пока локальные"),
-                 bg=BG, fg=("#8fe0a4" if configured else DIM), font=(FONT, 8),
+                 bg=BG, fg=("#8fe0a4" if configured else DIM), font=(FONT, 9),
                  anchor="w", wraplength=760, justify="left").pack(fill="x", pady=(4, 0))
     def publish_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
         result = self.api.post("/api/collections/publish", {"id": coll_id})
@@ -2717,8 +2913,9 @@ class App:
             items = data.get("items", [])
             state["total"] = data.get("total", state["total"])
             if not items and reset:
-                tk.Label(grid, text="Ничего не нашлось — попробуйте другой запрос.",
-                         bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", pady=8)
+                self._empty_state(grid, "Ничего не найдено",
+                                  "Попробуйте другой запрос или категорию.",
+                                  "search").pack(pady=30)
             for mod in items:
                 row = tk.Frame(grid, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
                 row.pack(fill="x", pady=2)
@@ -2732,17 +2929,17 @@ class App:
                 info = tk.Frame(row, bg=PANEL)
                 info.pack(side="left", fill="x", expand=True, pady=6)
                 tk.Label(info, text=mod.get("title") or mod["id"], bg=PANEL, fg=TEXT,
-                         font=(FONT_BOLD, 10), anchor="w").pack(fill="x")
+                         font=(FONT_BOLD, 10, "bold"), anchor="w").pack(fill="x")
                 meta = " · ".join(filter(None, [
                     CATEGORY_LABELS.get(mod.get("category") or "", mod.get("category") or ""),
                     mod.get("size_text") or "",
                 ]))
-                tk.Label(info, text=meta, bg=PANEL, fg=DIM, font=(FONT, 8),
+                tk.Label(info, text=meta, bg=PANEL, fg=DIM, font=(FONT, 9),
                          anchor="w").pack(fill="x")
                 theme.RoundButton(row, "Добавить",
                                   lambda m=mod: self._add_to_collection_page(coll_id, m),
                                   variant="primary", height=28, radius=8,
-                                  font=(FONT_BOLD, 8)).pack(side="right", padx=8)
+                                  font=(FONT_BOLD, 9, "bold")).pack(side="right", padx=8)
                 self._bind_click_tree(row, lambda m=mod: self.details(m))
             if len(items) + state["offset"] < state["total"]:
                 more = tk.Frame(grid, bg=BG)
@@ -2751,7 +2948,7 @@ class App:
                 theme.RoundButton(more, f"Показать ещё ({state['total'] - state['offset'] - len(items)} осталось)",
                                   lambda: (state.update({"offset": state["offset"] + len(items)}),
                                            draw(False)), height=32, radius=8,
-                                  font=(FONT_BOLD, 9)).pack()
+                                  font=(FONT_BOLD, 9, "bold")).pack()
 
         def search_now(*_args) -> None:
             state["q"] = search.get().strip()
@@ -2802,7 +2999,7 @@ class App:
         else:
             bar.pack(fill="x", pady=(0, 8))
         tk.Label(bar, text=f"Добавить «{mod.get('title') or ''}» в сборку:",
-                 bg=PANEL, fg=TEXT, font=(FONT_BOLD, 9), anchor="w").pack(
+                 bg=PANEL, fg=TEXT, font=(FONT_BOLD, 9, "bold"), anchor="w").pack(
             fill="x", padx=12, pady=(8, 2))
         row = tk.Frame(bar, bg=PANEL)
         row.pack(fill="x", padx=12, pady=(0, 8))
@@ -2813,9 +3010,9 @@ class App:
         for coll in mine[:6]:
             theme.RoundButton(row, coll.get("title") or "сборка",
                               lambda c=coll["id"]: self._add_to_collection_inline(c, mod, bar),
-                              height=26, radius=8, font=(FONT, 8)).pack(side="left", padx=3)
+                              height=26, radius=8, font=(FONT, 9)).pack(side="left", padx=3)
         theme.RoundButton(row, "Закрыть", bar.destroy, height=26, radius=8,
-                          font=(FONT, 8)).pack(side="right")
+                          font=(FONT, 9)).pack(side="right")
 
     def _add_to_collection_inline(self, coll_id: str, mod: dict, bar: tk.Frame) -> None:
         result = self.api.post("/api/collections/items",
@@ -2850,7 +3047,7 @@ class App:
         if valid:
             theme.RoundButton(toolbar, f"Установить все ({len(valid)})",
                               lambda: self.install_all(valid, total_size), variant="primary",
-                              height=32, radius=8, font=(FONT_BOLD, 9)).pack(side="right")
+                              height=32, radius=8, font=(FONT_BOLD, 9, "bold")).pack(side="right")
 
         if not items:
             tk.Label(frame, text="Новых архивов нет.", bg=BG, fg=MUTED,
@@ -2876,14 +3073,15 @@ class App:
                      anchor="w").pack(fill="x")
             tk.Label(info, text=f"{row.get('size_text')} · "
                                 f"{'мод' if row.get('valid') else 'не похоже на мод'}",
-                     bg=PANEL, fg=DIM, font=(FONT, 8), anchor="w").pack(fill="x")
+                     bg=PANEL, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
             if already:
                 tk.Label(info, text="уже установлен — можно поставить заново",
-                         bg=PANEL, fg="#8fe0a4", font=(FONT, 8), anchor="w").pack(fill="x")
+                         bg=PANEL, fg="#8fe0a4", font=(FONT, 9), anchor="w").pack(fill="x")
             button = theme.RoundButton(line, "Установить заново" if already else "Установить",
                                        lambda r=row: self.install_file(r),
                                        variant=("ghost" if already else "primary"), height=30,
-                                       radius=8, font=(FONT_BOLD if not already else FONT, 9))
+                                       radius=8, font=(FONT_BOLD if not already else FONT, 9,
+                                         "bold" if not already else "normal"))
             if not row.get("valid"):
                 button.configure(state="disabled")
             button.pack(side="left", padx=10)
@@ -2988,7 +3186,7 @@ class App:
             if self.is_moderator():
                 theme.RoundButton(acc_row, "Модерация", self.moderation_panel, variant="primary",
                                   height=30, radius=8,
-                                  font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+                                  font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=8)
         else:
             tk.Label(acc_row, text="Войдите, чтобы публиковать сборки и оценивать чужие",
                      bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left", padx=(0, 10))
@@ -3002,11 +3200,11 @@ class App:
         if self.is_moderator():
             theme.RoundButton(stats_row, "Админ-панель", self.admin_panel, variant="primary",
                               height=30, radius=8,
-                              font=(FONT_BOLD, 9)).pack(side="left", padx=8)
+                              font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=8)
         buttons = tk.Frame(frame, bg=BG)
         buttons.pack(fill="x", pady=10)
         theme.RoundButton(buttons, "Сохранить", self.save_settings, variant="primary",
-                          height=34, radius=9, font=(FONT_BOLD, 10)).pack(side="left")
+                          height=34, radius=9, font=(FONT_BOLD, 10, "bold")).pack(side="left")
         tk.Button(buttons, text="Пересобрать библиотеку", bg=PANEL, fg=TEXT, relief="flat",
                   font=(FONT, 10), padx=12, pady=6, cursor="hand2",
                   command=self.rescan).pack(side="left", padx=8)
@@ -3124,7 +3322,7 @@ class App:
         window.transient(self.root)
 
         tk.Label(window, text="Что случилось?", bg=BG, fg=TEXT,
-                 font=(FONT_BOLD, 11), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+                 font=(FONT_BOLD, 11, "bold"), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
         note = tk.Text(window, height=3, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
                        font=(FONT, 10), wrap="word")
         note.pack(fill="x", padx=18)
@@ -3185,7 +3383,7 @@ class App:
         buttons = tk.Frame(window, bg=BG)
         buttons.pack(fill="x", padx=18, pady=(4, 16))
         theme.RoundButton(buttons, "Открыть GitHub", open_issue, variant="primary",
-                          height=34, radius=9, font=(FONT_BOLD, 10)).pack(side="left")
+                          height=34, radius=9, font=(FONT_BOLD, 10, "bold")).pack(side="left")
         theme.RoundButton(buttons, "Скопировать текст", copy_text, height=34, radius=9,
                           bg=PANEL, fg=TEXT, hover=ACTIVE_BG, font=(FONT, 10)
                           ).pack(side="left", padx=8)
@@ -3261,8 +3459,9 @@ class App:
         self.count_label.configure(
             text=f"{known} обновлений" + (f" · {len(rows) - known} без версии" if len(rows) > known else ""))
         if not rows:
-            tk.Label(frame, text="Все установленные моды актуальны.", bg=BG, fg=MUTED,
-                     font=(FONT, 11)).pack(anchor="w", pady=20)
+            self._empty_state(frame, "Всё актуально",
+                              "Все установленные моды актуальны.",
+                              "arrow").pack(pady=44)
             return
         for row in rows:
             line = tk.Frame(frame, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
@@ -3270,20 +3469,20 @@ class App:
             info = tk.Frame(line, bg=PANEL)
             info.pack(side="left", fill="x", expand=True, padx=12, pady=8)
             tk.Label(info, text=row.get("title") or row.get("filename"), bg=PANEL, fg=TEXT,
-                     font=(FONT_BOLD, 10), anchor="w").pack(fill="x")
+                     font=(FONT_BOLD, 10, "bold"), anchor="w").pack(fill="x")
             if row.get("update_available"):
                 note = f"установлено {row.get('version')} → в каталоге {row.get('catalog_version')}"
                 color = "#ffd6a3"
             else:
                 note = f"версия файла неизвестна, в каталоге {row.get('catalog_version')}"
                 color = MUTED
-            tk.Label(info, text=note, bg=PANEL, fg=color, font=(FONT, 8),
+            tk.Label(info, text=note, bg=PANEL, fg=color, font=(FONT, 9),
                      anchor="w").pack(fill="x")
             theme.RoundButton(line, "Скачать новую",
                               lambda r=row: self.install({"id": r["mod_id"],
                                                           "title": r.get("title")}),
                               variant="primary", height=30, radius=8,
-                              font=(FONT_BOLD, 9)).pack(side="left", padx=10)
+                              font=(FONT_BOLD, 9, "bold")).pack(side="left", padx=10)
 
     def on_sync(self) -> None:
         self.set_status("Обновляю каталог…")
@@ -3423,17 +3622,18 @@ class App:
         rows = [("all", "Все моды", total)] + list(cats)
         for key, label, count in rows:
             icon = self.CAT_ICONS.get(key, "box")
-            row = tk.Frame(self.cat_frame, bg=SOFT, cursor="hand2", height=30)
+            row = tk.Frame(self.cat_frame, bg=SOFT, cursor="hand2", height=32)
             row.pack(fill="x", pady=1, padx=2)
             row.pack_propagate(False)
-            bar = tk.Canvas(row, width=3, bg=SOFT, highlightthickness=0, bd=0)
+            bar = tk.Canvas(row, width=4, bg=SOFT, highlightthickness=0, bd=0)
             bar.pack(side="left", fill="y")
-            icon_canvas = tk.Canvas(row, width=20, height=30, bg=SOFT, highlightthickness=0, bd=0)
+            icon_canvas = tk.Canvas(row, width=22, height=32, bg=SOFT,
+                                    highlightthickness=0, bd=0)
             icon_canvas.pack(side="left", padx=(8, 6))
-            text = tk.Label(row, text=label, bg=SOFT, fg=MUTED, font=(FONT, 9), anchor="w")
+            text = tk.Label(row, text=label, bg=SOFT, fg=MUTED, font=(FONT, 10), anchor="w")
             text.pack(side="left", fill="x", expand=True)
-            badge = tk.Label(row, text=str(count), bg=SOFT, fg=DIM, font=(FONT, 8), padx=4)
-            badge.pack(side="right", padx=(2, 6))
+            badge = tk.Label(row, text=str(count), bg=SOFT, fg=DIM, font=(FONT, 9), padx=4)
+            badge.pack(side="right", padx=(2, 8))
             self._draw_cat_icon(icon_canvas, icon, MUTED)
             self.cat_parts[key] = {"row": row, "bar": bar, "icon": icon_canvas, "kind": icon,
                                    "label": text, "badge": badge}
@@ -3449,19 +3649,18 @@ class App:
         if not parts:
             return
         active = key == self.category
-        bg = ACTIVE_BG if active else (HOVER_BG if hover else SOFT)
+        bg = SURFACE_2 if hover else SOFT
         for name in ("row", "bar", "icon", "label"):
             parts[name].configure(bg=bg)
-        parts["badge"].configure(bg=bg,
-                                 fg=(ACCENT if active else DIM),
-                                 font=(FONT_BOLD, 8) if active else (FONT, 8))
-        parts["label"].configure(fg=(TEXT if active else (TEXT if hover else MUTED)),
-                                 font=(FONT_BOLD if active else FONT, 9))
-        self._draw_cat_icon(parts["icon"], parts["kind"],
-                            ACCENT if active else (TEXT if hover else MUTED))
+        ink = ACCENT if active else (TEXT if hover else MUTED)
+        parts["badge"].configure(bg=bg, fg=(ACCENT if active else DIM),
+                                 font=(FONT_BOLD, 9, "bold") if active else (FONT, 9))
+        parts["label"].configure(fg=ink,
+                                 font=(FONT_BOLD, 10, "bold") if active else (FONT, 10))
+        self._draw_cat_icon(parts["icon"], parts["kind"], ink)
         parts["bar"].delete("all")
         if active:
-            parts["bar"].create_rectangle(0, 6, 3, 24, fill=ACCENT, width=0)
+            theme.rounded_rect(parts["bar"], 0, 9, 3, 23, 2, fill=ACCENT)
 
     def pick_category(self, key: str) -> None:
         self.category = key

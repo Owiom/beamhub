@@ -16,22 +16,22 @@ from tkinter import font as tkfont
 # Принцип: почти чёрный фон, поверхности на 3 ступени светлее, границы почти
 # не видны, оранжевый используется точечно — как акцент, а не как заливка.
 PALETTE = {
-    "bg": "#0b0c10",            # фон окна
-    "surface": "#15171e",       # карточки, панели, поля
-    "surface_2": "#1c1f28",     # приподнятые поверхности, hover
-    "surface_3": "#242833",     # нажатие, выбранный элемент
-    "border": "#242832",        # единственная линия сетки интерфейса
-    "border_soft": "#1b1e26",   # «мягкая» рамка карточек в покое
-    "border_strong": "#4a5364",  # рамка при наведении
-    "text": "#edeff3",          # основной текст
-    "muted": "#98a0b0",         # второй план (контраст 6.8:1 на surface)
-    "dim": "#7d8494",           # подписи, метаданные (контраст 4.8:1 на surface)
+    "bg": "#08090c",            # фон окна — глубже, чем любая поверхность
+    "surface": "#12141b",       # карточки, панели, поля
+    "surface_2": "#171a22",     # приподнятые поверхности, hover
+    "surface_3": "#20242f",     # нажатие, выбранный элемент
+    "border": "#232734",        # единственная линия сетки интерфейса
+    "border_soft": "#1a1e27",   # «мягкая» рамка карточек в покое
+    "border_strong": "#4b5670",  # рамка при наведении, фокус
+    "text": "#f0f2f7",          # основной текст
+    "muted": "#9aa3b4",         # второй план (контраст 7.4:1 на surface)
+    "dim": "#7a8291",           # подписи, метаданные (контраст 5.2:1 на surface)
     "accent": "#ff7a1a",        # акцент: одна кнопка на экран
-    "accent_hover": "#ff9142",
-    "accent_press": "#e86a0f",
-    "accent_soft": "#3a2410",   # плашка «дубликат», активный чип
-    "accent_soft_text": "#ffc79b",
-    "on_accent": "#1a0f04",     # текст на оранжевом
+    "accent_hover": "#ff8f3d",
+    "accent_press": "#e96a0b",
+    "accent_soft": "#33200f",   # плашка «дубликат», активный чип
+    "accent_soft_text": "#ffc08a",
+    "on_accent": "#170d04",     # текст на оранжевом
     "success": "#34c87b",
     "warning": "#f2b33d",
     "danger": "#f05252",
@@ -64,14 +64,19 @@ SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
 # ---------------------------------------------------------------- шрифты
 # Segoe UI Variable идёт с Windows 11; на Windows 10 остаётся Segoe UI.
 # Размеры — только из этой шкалы, чтобы интерфейс не «плыл».
+# 9 — подписи, 10 — тело, 11 — поля/описания, 13 — секции, 18 — заголовок
+# экрана, 22 — титул-«дисплей» (самый крупный текст в приложении).
 TYPE = {
     "caption": 9,   # метаданные, бейджи, статус-бар
     "body": 10,     # основной текст интерфейса
     "large": 11,    # поля ввода, описания
     "section": 13,  # заголовки секций, страниц
-    "title": 16,    # заголовок экрана
+    "title": 18,    # заголовок экрана
+    "display": 22,  # титул экрана каталога
 }
 
+# Полужирный набираем весом 600: одно семейство на всё приложение, а не
+# отдельный «Segoe UI Semibold», который на Windows 11 не подхватывается.
 PREFERRED = (
     "Segoe UI Variable Text",   # Windows 11
     "Segoe UI Variable",
@@ -97,21 +102,21 @@ BUTTONS = {
         "disabled_fg": "#5a6172",
     },
     "ghost": {
-        "bg": "#171a21",
+        "bg": "#151821",
         "hover": PALETTE["surface_3"],
-        "press": "#2b3040",
+        "press": "#2a3040",
         "fg": PALETTE["text"],
-        "disabled_bg": "#16181f",
+        "disabled_bg": "#14161d",
         "disabled_fg": "#5a6172",
     },
 }
 
 CARD = {
     "bg": PALETTE["surface"],
-    "bg_hover": "#1a1e27",
+    "bg_hover": "#171b24",
     "border": PALETTE["border_soft"],
     "border_hover": PALETTE["border_strong"],
-    "duplicate_border": "#6b3a18",
+    "duplicate_border": "#8a4a1c",
     "badge_bg": PALETTE["accent_soft"],
     "badge_fg": PALETTE["accent_soft_text"],
 }
@@ -193,10 +198,17 @@ def font_setup() -> tuple[str, str]:
     return base, semibold
 
 
-def ui_font(size: int = TYPE["body"], semibold: bool = False) -> tuple[str, int]:
-    """Шрифт из шкалы: theme.ui_font(TYPE["title"], semibold=True)."""
+def ui_font(size: int = TYPE["body"], semibold: bool = False) -> tuple:
+    """Шрифт из шкалы: theme.ui_font(TYPE["title"], semibold=True).
+
+    Полужирный — это тот же Segoe UI Variable с весом bold: отдельного
+    семейства «Segoe UI Variable Semibold» в системе нет, а «Segoe UI Semibold»
+    на Windows 11 выглядит как шрифт из прошлого десятилетия.
+    """
     base, bold = _RESOLVED or ("Segoe UI", "Segoe UI Semibold")
-    return (bold if semibold else base), size
+    if semibold:
+        return (bold, size, "bold")
+    return (base, size)
 
 
 def dark_titlebar(window: tk.Misc) -> None:
@@ -256,7 +268,7 @@ class RoundButton(tk.Canvas):
     """
 
     def __init__(self, parent: tk.Misc, text: str, command=None, *, width: int | None = None,
-                 height: int = 34, radius: int | None = None, variant: str = "ghost",
+                 height: int = 36, radius: int | None = None, variant: str = "ghost",
                  bg: str | None = None, fg: str | None = None, hover: str | None = None,
                  press: str | None = None, accent: str | None = None,
                  accent_hover: str | None = None,
@@ -280,7 +292,7 @@ class RoundButton(tk.Canvas):
         self._accent_hover = accent_hover or BUTTONS["primary"]["hover"]
         self._accent_press = (mix(accent, "#000000", 0.10) if accent
                              else BUTTONS["primary"]["press"])
-        self._font = font
+        self._font = font or ui_font(TYPE["body"], semibold=(self._variant == "primary"))
         self._disabled_bg = disabled_bg or base["disabled_bg"]
         self._disabled_fg = disabled_fg or base["disabled_fg"]
         self._border = border
@@ -438,6 +450,154 @@ class RoundButton(tk.Canvas):
         if key == "state":
             return self._state
         return super().cget(key)
+
+class AvatarButton(tk.Canvas):
+    """Кнопка аккаунта: круглый аватар + имя в скруглённой «таблетке».
+
+    Гость видит нейтральный кружок с силуэтом, вошедший — оранжевый кружок с
+    первой буквой ника. Ширина считается по тексту (ник обрезается по
+    max_width), поэтому шапка не разъезжается от длинного ника.
+    """
+
+    GUEST_TEXTS = {"", "войти", "вход", "войти в аккаунт", "sign in", "log in"}
+
+    def __init__(self, parent: tk.Misc, text: str = "", command=None, *, height: int = 40,
+                 font=None, max_width: int = 240, **kwargs) -> None:
+        try:
+            parent_bg = parent.cget("bg")
+        except Exception:  # noqa: BLE001
+            parent_bg = PALETTE["bg"]
+        super().__init__(parent, height=height, width=150, highlightthickness=0, bd=0,
+                         bg=parent_bg, cursor="hand2", **kwargs)
+        self._text = str(text or "Войти")
+        self._command = command
+        self._height = height
+        self._font = font or ui_font(TYPE["body"])
+        self._max_width = max_width
+        self._hovered = False
+        self._guest = self._is_guest()
+        self._label = tk.Label(self, text=self._text, bd=0, padx=0, pady=0,
+                               bg=BUTTONS["ghost"]["bg"], fg=PALETTE["text"],
+                               font=self._font, cursor="hand2")
+        self._label.place(x=height + 4, y=height // 2, anchor="w")
+        for widget in (self, self._label):
+            widget.bind("<Enter>", self._on_enter)
+            widget.bind("<Leave>", self._on_leave)
+            widget.bind("<Button-1>", self._on_click)
+        self.bind("<Configure>", lambda _e: self._draw())
+        self._layout()
+
+    # --- геометрия ---
+    def _is_guest(self) -> bool:
+        return self._text.strip().lower() in self.GUEST_TEXTS
+
+    def _measured(self, text: str) -> int:
+        try:
+            return tkfont.Font(font=self._font).measure(text)
+        except tk.TclError:
+            return len(text) * 7
+
+    def _fit_text(self) -> str:
+        limit = self._max_width - self._height - 34
+        text = self._text
+        if self._measured(text) <= limit:
+            return text
+        while text and self._measured(text + "…") > limit:
+            text = text[:-1]
+        return (text + "…") if text else "…"
+
+    def _layout(self) -> None:
+        shown = self._fit_text()
+        self._label.configure(text=shown, font=self._font)
+        width = self._height + 6 + self._measured(shown) + 30
+        self.configure(width=max(96, min(width, self._max_width)))
+        self._draw()
+
+    # --- отрисовка ---
+    def _draw(self) -> None:
+        self.delete("all")
+        width = self.winfo_width()
+        if width <= 1:
+            width = int(float(self.cget("width")))
+        height = self._height
+        fill = PALETTE["surface_3"] if self._hovered else PALETTE["surface_2"]
+        border = PALETTE["border_strong"] if self._hovered else PALETTE["border"]
+        rounded_rect(self, 1, 1, width - 1, height - 1, height // 2 - 1,
+                     fill=fill, outline=border, width=1)
+        radius = (height - 12) // 2
+        cx, cy = 6 + radius, height // 2
+        if self._guest:
+            self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius,
+                             fill=PALETTE["surface_3"], outline="")
+            self.create_oval(cx - 3, cy - 7, cx + 3, cy - 1,
+                             fill=PALETTE["accent_soft_text"], outline="")
+            self.create_arc(cx - 7, cy - 2, cx + 7, cy + 9, start=200, extent=140,
+                            style="arc", outline=PALETTE["accent_soft_text"], width=2)
+        else:
+            self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius,
+                             fill=PALETTE["accent"], outline="")
+            self.create_text(cx, cy, text=(self._text.strip()[:1] or "?").upper(),
+                             fill=PALETTE["on_accent"],
+                             font=(self._font[0], TYPE["body"], "bold"))
+        self.create_line(width - 18, cy - 2, width - 13, cy + 3, width - 8, cy - 2,
+                         fill=PALETTE["dim"], width=2, capstyle="round", joinstyle="round")
+        self._label.configure(bg=fill, fg=PALETTE["text"],
+                              font=(self._font[0], self._font[1],
+                                    "bold" if not self._guest else "normal"))
+
+    # --- события ---
+    def _on_enter(self, _event=None) -> None:
+        self._hovered = True
+        self._draw()
+
+    def _on_leave(self, _event=None) -> None:
+        def settle() -> None:
+            try:
+                x, y = self.winfo_pointerxy()
+                widget = self.winfo_containing(x, y)
+            except tk.TclError:
+                widget = None
+            while widget is not None and widget is not self:
+                widget = getattr(widget, "master", None)
+            if widget is self:
+                return
+            self._hovered = False
+            self._draw()
+
+        self.after(30, settle)
+
+    def _on_click(self, _event=None) -> None:
+        if self._command:
+            self._command()
+
+    # --- совместимость с RoundButton/tk.Button ---
+    def configure(self, cnf=None, **kwargs):  # noqa: N802
+        if isinstance(cnf, dict):
+            kwargs = {**cnf, **kwargs}
+        text = kwargs.pop("text", None)
+        if text is not None:
+            self._text = str(text)
+            self._guest = self._is_guest()
+            self._layout()
+        for key in ("fg", "bg", "hover", "press", "state", "radius", "variant",
+                    "border", "border_hover", "command"):
+            if key in kwargs and key == "command":
+                self._command = kwargs.pop(key)
+            else:
+                kwargs.pop(key, None)
+        if "font" in kwargs:
+            self._font = kwargs.pop("font")
+            self._layout()
+        if kwargs:
+            super().configure(**kwargs)
+
+    config = configure
+
+    def cget(self, key):
+        if key == "text":
+            return self._text
+        return super().cget(key)
+
 
 class RoundedFrame(tk.Canvas):
     """Панель со скруглением и рамкой; содержимое кладём в .body."""
