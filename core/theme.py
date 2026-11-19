@@ -438,3 +438,39 @@ class RoundButton(tk.Canvas):
         if key == "state":
             return self._state
         return super().cget(key)
+
+class RoundedFrame(tk.Canvas):
+    """Панель со скруглением и рамкой; содержимое кладём в .body."""
+
+    def __init__(self, parent: tk.Misc, *, radius: int = 14, fill: str = "#15171e",
+                 border: str = "#242832", padding: int = 1, **kwargs) -> None:
+        super().__init__(parent, highlightthickness=0, bd=0, bg=parent["bg"], **kwargs)
+        self._radius = radius
+        self._fill = fill
+        self._border = border
+        self._padding = padding
+        self.body = tk.Frame(self, bg=fill)
+        self._window = self.create_window(padding, padding, window=self.body, anchor="nw")
+        self.body.bind("<Configure>", self._on_body)
+        self.bind("<Configure>", self._draw)
+
+    def _on_body(self, event) -> None:
+        self.configure(height=event.height + self._padding * 2)
+
+    def _draw(self, _event=None) -> None:
+        width = max(2, self.winfo_width())
+        height = max(2, self.winfo_height())
+        self.delete("panel")
+        rounded_rect(self, 1, 1, width - 1, height - 1, self._radius,
+                     fill=self._fill, outline=self._border, tags="panel")
+        self.tag_lower("panel")
+        self.itemconfigure(self._window, width=max(1, width - self._padding * 2))
+
+    def set_border(self, color: str) -> None:
+        self._border = color
+        self._draw()
+
+    def set_fill(self, color: str) -> None:
+        self._fill = color
+        self.body.configure(bg=color)
+        self._draw()

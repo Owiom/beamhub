@@ -162,7 +162,7 @@ def proxy_image(url: str) -> tuple[bytes, str]:
 
     now = time.time()
     failed_at = _IMG_FAILED.get(url)
-    if failed_at and now - failed_at < 3600:
+    if failed_at and now - failed_at < 600:
         raise RuntimeError("Картинка недоступна (пробовали недавно)")
 
     parts = urllib.parse.urlsplit(url)
@@ -175,7 +175,7 @@ def proxy_image(url: str) -> tuple[bytes, str]:
     # и не пускаем больше трёх одновременных загрузок, иначе все упираются в таймаут
     with _IMG_SLOTS:
         try:
-            raw = fetch_bytes(url, referer=referer, timeout=25, safe=True)
+            raw = fetch_bytes(url, referer=referer, timeout=60, safe=True)
         except Exception:
             _IMG_FAILED[url] = now
             if len(_IMG_FAILED) > 500:

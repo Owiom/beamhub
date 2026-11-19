@@ -875,17 +875,18 @@ class App:
 
     def _card(self, parent: tk.Frame, item: dict) -> tk.Frame:
         duplicate = bool(item.get("duplicate"))
-        card = tk.Frame(parent, bg=PANEL, highlightthickness=1,
-                        highlightbackground=(DUP_LINE if duplicate else LINE))
+        outer = theme.RoundedFrame(parent, radius=16, fill=PANEL,
+                                   border=(DUP_LINE if duplicate else LINE),
+                                   padding=8, width=IMG_W + 18)
+        card = outer.body
         holder = tk.Frame(card, bg="#0a0b0e", width=IMG_W, height=IMG_H)
         holder.pack(fill="x")
         holder.pack_propagate(False)  # фиксированная высота, пока картинки нет
         thumb = tk.Label(holder, bg="#0a0b0e", bd=0, text="", fg=DIM, font=(FONT, 8))
         thumb.pack(fill="both", expand=True)
+        self._set_placeholder(thumb, item)
         if item.get("image"):
             self._request_image(item["image"], thumb, item)
-        else:
-            self._set_placeholder(thumb, item)
         if duplicate:
             sources = ", ".join(SOURCE_NAMES.get(s, s) for s in item.get("duplicate_sources") or [])
             badge_text = f"дубликат · {item.get('duplicate_count')}"
@@ -942,11 +943,11 @@ class App:
                   command=lambda i=item: self.details(i)).pack(side="left", padx=(4, 0))
 
         self._bind_click_tree(card, lambda i=item: self.details(i))
-        self._bind_card_hover(card, duplicate)
-        return card
+        self._bind_card_hover(outer, duplicate)
+        return outer
 
-    def _bind_card_hover(self, card: tk.Frame, duplicate: bool) -> None:
-        """Подсветка карточки при наведении — без мигания, когда ведёшь по дочерним виджетам."""
+    def _bind_card_hover(self, card: tk.Canvas, duplicate: bool) -> None:
+        """Подсветка рамки карточки при наведении — без мигания."""
         normal = DUP_LINE if duplicate else LINE_SOFT
 
         def inside() -> bool:
@@ -959,10 +960,16 @@ class App:
             return False
 
         def enter(_event=None) -> None:
-            card.configure(highlightbackground=SURFACE_3)
+            if hasattr(card, "set_border"):
+                card.set_border("#4a5364")
 
         def leave(_event=None) -> None:
-            card.after(30, lambda: None if inside() else card.configure(highlightbackground=normal))
+            def restore() -> None:
+                if inside():
+                    return
+                if hasattr(card, "set_border"):
+                    card.set_border(normal)
+            card.after(30, restore)
 
         widgets = [card]
         pending = list(card.winfo_children())
@@ -2499,7 +2506,7 @@ class App:
     def cloud_block(self, frame: tk.Frame, settings: dict) -> None:
         block = tk.Frame(frame, bg=BG)
         block.pack(fill="x", pady=8)
-        tk.Label(block, text="Облако (Supabase) — вход по email и общие сборки",
+        tk.Label(block, text="Облако (Supabase) — аккаунт и общие сборки",
                  bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x")
         baked = False
         try:
@@ -2544,6 +2551,25 @@ class App:
         if not baked:
             theme.RoundButton(buttons, "Сохранить облако", save_cloud, height=30, radius=8,
                               font=(FONT, 9)).pack(side="left")
+        logged = bool(self.user)
+        if logged:
+            tk.Label(block, text=f"Вы вошли как {(self.user or {}).get('nickname')}",
+                     bg=BG, fg="#8fe0a4", font=(FONT_BOLD, 10), anchor="w").pack(
+                fill="x", pady=(6, 0))
+            sync_row = tk.Frame(block, bg=BG)
+            sync_row.pack(fill="x", pady=(4, 0))
+            theme.RoundButton(sync_row, "Мои сборки в облако", self.sync_push, height=30,
+                              radius=8, font=(FONT, 9)).pack(side="left")
+            theme.RoundButton(sync_row, "Загрузить из облака", self.sync_pull, height=30,
+                              radius=8, font=(FONT, 9)).pack(side="left", padx=8)
+            theme.RoundButton(sync_row, "Выйти", self.logout, height=30, radius=8,
+                              font=(FONT, 9)).pack(side="left")
+            configured = cloud.configured()
+            tk.Label(block, text=("Облако подключено" if configured else
+                                  "Облако не подключено — данные только на этом компьютере"),
+                     bg=BG, fg=("#8fe0a4" if configured else DIM), font=(FONT, 8),
+                     anchor="w").pack(fill="x", pady=(4, 0))
+            return
         mail_row = tk.Frame(block, bg=BG)
         mail_row.pack(fill="x", pady=(6, 0))
         tk.Label(mail_row, text="email", bg=BG, fg=DIM, font=(FONT, 8)).pack(side="left")
