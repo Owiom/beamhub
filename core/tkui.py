@@ -2228,9 +2228,15 @@ class App:
         missing_count = len(plan.get("missing") or [])
         theme.RoundButton(
             actions,
-            "Установить сборку" + (f" ({missing_count})" if missing_count else ""),
+            "Скачивать по очереди" + (f" ({missing_count})" if missing_count else ""),
             lambda: self.apply_collection(coll_id), variant="primary",
             height=32, radius=9, font=(FONT_BOLD, 9, "bold")).pack(side="left")
+        theme.RoundButton(actions, "Открыть все ссылки",
+                          lambda: self.open_all_links(coll_id), height=32, radius=9,
+                          font=(FONT, 9, "bold")).pack(side="left", padx=8)
+        theme.RoundButton(actions, "Автоустановка",
+                          lambda: self.auto_install_collection(coll_id), height=32, radius=9,
+                          font=(FONT, 9, "bold")).pack(side="left")
         if not coll.get("is_owner"):
             theme.RoundButton(actions, "Пожаловаться",
                               lambda: self.report_dialog("collection", coll_id,
@@ -2944,8 +2950,24 @@ class App:
             window.destroy()
         self.collection_details(coll_id)
 
-    def apply_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
+    def open_all_links(self, coll_id: str) -> None:
+        result = self.api.post("/api/collections/open-all", {"id": coll_id})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось открыть ссылки"), "error")
+            return
+        self.toast(result.get("message", "Открыл ссылки"), "ok")
+
+    def auto_install_collection(self, coll_id: str) -> None:
         result = self.api.post("/api/collections/install", {"id": coll_id})
+        if not result.get("ok"):
+            self.toast(result.get("error", "Не удалось начать автоустановку"), "error")
+            return
+        self.toast(result.get("message", "Скачиваю сборку…"), "ok")
+        self.set_status(result.get("message", "Скачиваю сборку…"))
+        self.root.after(4000, lambda: self.collection_details(coll_id))
+
+    def apply_collection(self, coll_id: str, window: tk.Misc | None = None) -> None:
+        result = self.api.post("/api/collections/sequence", {"id": coll_id})
         if not result.get("ok"):
             self.toast(result.get("error", "Не удалось начать установку"), "error")
             return

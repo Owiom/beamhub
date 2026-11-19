@@ -1114,6 +1114,50 @@ class Handler(BaseHTTPRequestHandler):
                       else collections.publish(coll_id, user["id"], body.get("note", "")))
             self._json(result)
             return True
+        if path == "/api/collections/open-all":
+            user = self._current_user()
+            if not user:
+                self._json({"ok": False, "error": "Нужно войти в аккаунт."}, status=401)
+                return True
+            plan = collections.plan(body.get("id", ""), user["id"])
+            if not plan.get("ok"):
+                self._json(plan, status=404)
+                return True
+            missing = plan.get("missing") or []
+            if not missing:
+                self._json({"ok": True, "opened": 0, "message": "Вся сборка уже установлена."})
+                return True
+            from core.providers import resolve_download
+
+            opened = 0
+            for item in missing:
+                mod = db.get_mod(item["mod_id"])
+                if not mod:
+                    continue
+                open_in_browser(resolve_download(mod) or mod.get("url") or "")
+                opened += 1
+            self._json({"ok": True, "opened": opened,
+                        "message": f"Открыл ссылок: {opened}. Скачайте файлы — BeamHub поставит их сам."})
+            return True
+        if path == "/api/collections/sequence":
+            user = self._current_user()
+            if not user:
+                self._json({"ok": False, "error": "Нужно войти в аккаунт."}, status=401)
+                return True
+            plan = collections.plan(body.get("id", ""), user["id"])
+            if not plan.get("ok"):
+                self._json(plan, status=404)
+                return True
+            missing = plan.get("missing") or []
+            if not missing:
+                self._json({"ok": True, "queued": 0, "message": "Вся сборка уже установлена."})
+                return True
+            mods = [db.get_mod(item["mod_id"]) for item in missing]
+            mods = [mod for mod in mods if mod]
+            count = HUB.set_sequence(mods)
+            self._json({"ok": True, "queued": count,
+                        "message": f"По очереди: {count} модов. После установки файла откроется следующий."})
+            return True
         if path == "/api/collections/install":
             user = self._current_user()
             if not user:

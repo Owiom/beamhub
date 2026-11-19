@@ -21,6 +21,7 @@ class Hub:
         self.events: deque = deque(maxlen=80)
         self.seq = 0
         self.pending: dict | None = None
+        self.sequence: list[dict] = []
         self.last_seen = time.time()  # когда последний раз обращались из интерфейса
         self.progress = {"done": 0, "total": 0, "running": False}
         self._seen: dict[str, tuple[int, int]] = {}
@@ -69,6 +70,34 @@ class Hub:
                 return None
             return self.pending
 
+
+    # ---------- последовательное скачивание ----------
+    def set_sequence(self, mods: list[dict]) -> int:
+        """Скачивать по очереди: открываем первый, следующий — после установки файла."""
+        with self.lock:
+            self.sequence = [dict(mod) for mod in mods]
+        self._open_next_sequence()
+        return len(mods)
+
+    def _open_next_sequence(self) -> None:
+        from .providers import resolve_download
+
+        with self.lock:
+            if not self.sequence:
+                self.pending = None
+                self.emit("sequence", "Очередь сборки закончилась.")
+                return
+            mod = self.sequence.pop(0)
+        url = resolve_download(mod) or mod.get("url") or ""
+        self.set_pending(mod, url)
+        left = len(self.sequence)
+        try:
+            open_in_browser(url)
+        except Exception as exc:  # noqa: BLE001
+            self.emit("error", f"Не открылась ссылка: {exc}")
+        self.emit("sequence",
+                  f"Открыл «{mod.get('title') or mod.get('id')}»"
+                  + (f" — осталось {left}" if left else " — последний мод"), mod_id=mod.get("id"))
     # ---------- слежка ----------
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -179,6 +208,8 @@ class Hub:
             self.emit("installed", f"Установлено: {title}", mod_id=(mod or {}).get("id"),
                       filename=result["installed"]["filename"])
             self.clear_pending()
+            if self.sequence:
+                self._open_next_sequence()
             try:
                 from . import matcher
 
@@ -189,6 +220,8 @@ class Hub:
         if result["status"] == "duplicate":
             self.emit("duplicate", f"«{path.stem}» уже установлен — пропустил.", mod_id=(mod or {}).get("id"))
             self.clear_pending()
+            if self.sequence:
+                self._open_next_sequence()
             return True
         self.emit("error", f"Не удалось установить «{path.name}»: {result.get('message', '')}")
         return False
