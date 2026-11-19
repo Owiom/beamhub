@@ -61,6 +61,7 @@ def ensure() -> int:
     """Создаёт официальные сборки, если их ещё нет. Возвращает число созданных."""
     team = _ensure_team_user()
     cleanup_torrents()
+    refill()
     existing = {row["title"] for row in db.query(
         "SELECT title FROM collections WHERE owner_id=?", (team,))}
     created = 0
@@ -136,3 +137,49 @@ def cleanup_torrents() -> int:
                     "added_at) VALUES(?,?,?,?,?)",
                     (coll["id"], mod_id, have + index, "", now_ts()))
     return removed
+
+def refill(target: int = 10) -> int:
+    """Добирает официальные сборки до target модов (без торрентов)."""
+    team = db.query_one("SELECT id FROM users WHERE email=?", (OFFICIAL_EMAIL,))
+    if not team:
+        return 0
+    added = 0
+    for title, category, _tags, words in OFFICIAL:
+        coll = db.query_one("SELECT id FROM collections WHERE owner_id=? AND title=?",
+                            (team["id"], title))
+        if not coll:
+            continue
+        taken = {row["mod_id"] for row in db.query(
+            "SELECT mod_id FROM collection_items WHERE collection_id=?", (coll["id"],))}
+        have = len(taken)
+        if have >= target:
+            continue
+        for mod_id in _pick_mods(words, target * 3):
+            if have >= target:
+                break
+            if mod_id in taken:
+                continue
+            db.execute(
+                "INSERT OR IGNORE INTO collection_items(collection_id,mod_id,position,note,"
+                "added_at) VALUES(?,?,?,?,?)",
+                (coll["id"], mod_id, have, "", now_ts()))
+            taken.add(mod_id)
+            have += 1
+            added += 1
+        if have < target:
+            rows = db.query(
+                "SELECT id FROM mods WHERE category=? AND source <> 'playground' "
+                "ORDER BY downloads DESC LIMIT 80", (category,))
+            for row in rows:
+                if have >= target:
+                    break
+                if row["id"] in taken:
+                    continue
+                db.execute(
+                    "INSERT OR IGNORE INTO collection_items(collection_id,mod_id,position,note,"
+                    "added_at) VALUES(?,?,?,?,?)",
+                    (coll["id"], row["id"], have, "", now_ts()))
+                taken.add(row["id"])
+                have += 1
+                added += 1
+    return added

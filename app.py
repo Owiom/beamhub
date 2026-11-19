@@ -1389,6 +1389,14 @@ def bootstrap() -> None:
     config.load()
     db.init()
     try:
+        if db.get_meta("orphans_purged") != "1":
+            db.execute("DELETE FROM collection_items WHERE mod_id NOT IN (SELECT id FROM mods)")
+            db.execute("DELETE FROM favorites WHERE mod_id NOT IN (SELECT id FROM mods)")
+            db.set_meta("orphans_purged", "1")
+            print("[beamhub] осиротевшие записи коллекций очищены")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[beamhub] orphan purge: {exc}")
+    try:
         if db.get_meta("torrent_purged") != "1":
             removed = db.query("SELECT COUNT(*) AS c FROM mods WHERE source='playground'")[0]["c"]
             db.execute("DELETE FROM mods WHERE source='playground'")

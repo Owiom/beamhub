@@ -1383,13 +1383,20 @@ class App:
                 tk.Label(frame, text="Похожие моды", bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"),
                          anchor="w").pack(fill="x", pady=(8, 2))
                 for row in items[:5]:
-                    line = tk.Frame(frame, bg=BG)
-                    line.pack(fill="x", pady=1)
-                    tk.Label(line, text=row.get("title") or row["id"], bg=BG, fg=TEXT,
-                             font=(FONT, 9), anchor="w").pack(side="left", fill="x", expand=True)
-                    theme.RoundButton(line, "Открыть",
-                                      lambda r=row: self.details_by_id(r["id"]),
-                                      height=24, radius=8, font=(FONT, 9)).pack(side="right")
+                    line = tk.Frame(frame, bg=PANEL, highlightthickness=0)
+                    line.pack(fill="x", pady=2)
+                    box = tk.Frame(line, bg="#0a0b0e", width=64, height=36)
+                    box.pack(side="left", padx=(0, 8), pady=4)
+                    box.pack_propagate(False)
+                    thumb = tk.Label(box, bg="#0a0b0e", bd=0, text="")
+                    thumb.pack(fill="both", expand=True)
+                    self._set_placeholder(thumb, row, (64, 36))
+                    if row.get("image"):
+                        self._request_image(row["image"], thumb, row)
+                    tk.Label(line, text=row.get("title") or row["id"], bg=PANEL, fg=TEXT,
+                             font=(FONT, 10), anchor="w").pack(side="left", fill="x",
+                                                              expand=True, padx=4)
+                    self._bind_click_tree(line, lambda r=row: self.details_by_id(r["id"]))
             self._translate_ui(window)
         self.root.after(0, apply)
 
@@ -2262,7 +2269,8 @@ class App:
                 catalog = {row["id"]: row for row in data.get("items", [])}
             except Exception:  # noqa: BLE001
                 catalog = {}
-        for index, item in enumerate(items, start=1):
+        visible = [item for item in items if item["mod_id"] in catalog] if catalog else items
+        for index, item in enumerate(visible, start=1):
             line = tk.Frame(inner, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             line.pack(fill="x", pady=3)
             mark = "✓" if item["mod_id"] in installed else str(index)
