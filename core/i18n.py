@@ -376,6 +376,9 @@ def tr(text: str) -> str:
     if exact:
         return exact
     result = text
+    # длинные абзацы (описания модов) не переводим подстановками — только точным словарём
+    if len(result) > 220:
+        return result
     for pattern, repl in RULES:
         new = re.sub(pattern, repl, result, count=1)
         if new != result:

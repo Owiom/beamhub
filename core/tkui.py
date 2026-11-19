@@ -369,9 +369,11 @@ class App:
         self.filter_game = tk.BooleanVar(value=False)
         self.filter_image = tk.BooleanVar(value=False)
         self.filter_fav = tk.BooleanVar(value=False)
+        self.filter_verified = tk.BooleanVar(value=False)
         self.filter_chips: dict[str, object] = {}
         for text, var, key in (("0.40.x", self.filter_game, "game"),
                                ("с обложкой", self.filter_image, "image"),
+                               ("проверенные", self.filter_verified, "verified"),
                                ):
             chip = theme.RoundButton(filters, text, lambda v=var, k=key: self._toggle_chip(v, k),
                                      height=28, radius=14, bg=SURFACE_2, fg=MUTED,
@@ -737,19 +739,24 @@ class App:
                 if english:
                     original = getattr(widget, "_ru_text", None)
                     # текст поменялся на другой русский — запоминаем новую основу
-                    if re.search("[А-Яа-яЁё]", current) and (not original or current != i18n.tr(original)):
+                    if re.search("[А-Яа-яЁё]", current) and (
+                            not original or current not in (original,
+                                                           getattr(widget, "_en_text", None))):
                         widget._ru_text = current
                         original = current
                     if original:
                         translated = i18n.tr(original)
+                        widget._en_text = translated
                         if translated != current:
                             widget.configure(text=translated)
                 else:
                     original = getattr(widget, "_ru_text", None)
-                    # Возвращаем русский только если на экране его английский
-                    # перевод, а не новый счётчик/статус, поставленный логикой.
-                    if original and current != original and current == i18n.EN.get(original, original):
-                        widget.configure(text=original)
+                    # Возвращаем русский только если на экране наш перевод,
+                    # а не новый счётчик/статус, поставленный логикой.
+                    if original:
+                        shown = getattr(widget, "_en_text", None) or i18n.EN.get(original, original)
+                        if current == shown and current != original:
+                            widget.configure(text=original)
 
         if klass == "TCombobox":
             try:
@@ -1233,6 +1240,8 @@ class App:
             params["img"] = "1"
         if self.filter_fav.get():
             params["fav"] = "1"
+        if self.filter_verified.get():
+            params["verified"] = "1"
         try:
             data = self.api.get("/api/mods", **params)
         except Exception as exc:  # noqa: BLE001
@@ -1386,6 +1395,8 @@ class App:
             params["img"] = "1"
         if self.filter_fav.get():
             params["fav"] = "1"
+        if self.filter_verified.get():
+            params["verified"] = "1"
         try:
             data = self.api.get("/api/mods", **params)
         except Exception as exc:  # noqa: BLE001
@@ -1408,6 +1419,8 @@ class App:
             params["img"] = "1"
         if self.filter_fav.get():
             params["fav"] = "1"
+        if self.filter_verified.get():
+            params["verified"] = "1"
         try:
             data = self.api.get("/api/mods", **params)
         except Exception as exc:  # noqa: BLE001
@@ -1430,6 +1443,11 @@ class App:
             widget.bind("<Button-1>", lambda _e, cb=callback: cb())
         for child in widget.winfo_children():
             self._bind_click_tree(child, callback)
+
+    def _is_russian(self, item: dict) -> bool:
+        """Мод с русской локализацией: ищем пометки в названии и описании."""
+        blob = f"{item.get('title') or ''} {item.get('description') or ''}".lower()
+        return bool(re.search(r"russian|русск|русиф|\bru\b", blob))
 
     def _card(self, parent: tk.Frame, item: dict) -> tk.Frame:
         duplicate = bool(item.get("duplicate"))
@@ -1459,6 +1477,9 @@ class App:
         badge_row.pack_propagate(False)
         tk.Label(badge_row, text=item.get("category_label", "Другое"), bg=PANEL,
                  fg=ACCENT_SOFT_TEXT, font=(FONT, 9), anchor="w").pack(side="left")
+        if self._is_russian(item):
+            tk.Label(badge_row, text="RU", bg=SURFACE_3, fg=ACCENT_SOFT_TEXT,
+                     font=(FONT_BOLD, 8, "bold"), padx=4).pack(side="left", padx=(6, 0))
         size = item.get("size_text") or ""
         if size:
             tk.Label(badge_row, text=size, bg=PANEL, fg=DIM, font=(FONT, 9),

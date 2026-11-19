@@ -395,9 +395,11 @@ class Handler(BaseHTTPRequestHandler):
                 game = (query.get("game") or [""])[0]
                 has_image = (query.get("img") or ["0"])[0] == "1"
                 favorites_only = (query.get("fav") or ["0"])[0] == "1"
+                verified_only = (query.get("verified") or ["0"])[0] == "1"
                 result = db.query_mods(q=q, category=category, source=source, sort=sort,
                                        offset=offset, limit=limit, game=game,
-                                       has_image=has_image, favorites_only=favorites_only)
+                                       has_image=has_image, favorites_only=favorites_only,
+                                       verified_only=verified_only)
                 favorites = db.favorite_ids()
                 dups = db.title_key_counts({m.get("title_key") for m in result["items"]})
                 self._json({
@@ -485,9 +487,10 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 try:
                     raw, content_type = proxy_image(url)
-                except RuntimeError as exc:
-                    text = str(exc)
-                    status = 400 if "адрес" in text or "http" in text else 404
+                except Exception as exc:  # noqa: BLE001
+                    text = str(exc) or "картинка недоступна"
+                    status = 400 if ("адрес" in text or "http" in text
+                                     or isinstance(exc, NameError)) else 404
                     self._error(text[:120], status)
                     return
                 self._send(200, raw, content_type, cache=True)
