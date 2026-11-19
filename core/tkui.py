@@ -1383,85 +1383,71 @@ class App:
         self.details(data.get("item") or data)
 
     def stats_window(self) -> None:
-        window = tk.Toplevel(self.root, bg=BG)
-        window.title("Статистика сообщества")
-        window.geometry("820x720")
-        window.transient(self.root)
-        body = tk.Frame(window, bg=BG)
-        body.pack(fill="both", expand=True)
-        canvas = tk.Canvas(body, bg=BG, highlightthickness=0)
-        canvas.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
-        scroll.pack(side="right", fill="y")
-        canvas.configure(yscrollcommand=scroll.set)
-        inner = tk.Frame(canvas, bg=BG)
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        page = self._show_page("Статистика сообщества")
+        try:
+            data = self.api.get("/api/stats")
+        except Exception as exc:  # noqa: BLE001
+            tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
+            return
+        cards = tk.Frame(page, bg=BG)
+        cards.pack(fill="x", pady=(0, 12))
+        numbers = (
+            ("Пользователи", data.get("users", 0)),
+            ("Активны за 7 дней", data.get("active_users_7d", 0)),
+            ("Сборки", data.get("collections", 0)),
+            ("Установки", data.get("installs", 0)),
+            ("Просмотры", data.get("views", 0)),
+            ("Комментарии", data.get("comments", 0)),
+            ("Оценки", data.get("ratings", 0)),
+        )
+        for index, (label, value) in enumerate(numbers):
+            cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            cell.grid(row=0, column=index, sticky="nsew", padx=(0, 6))
+            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 18),
+                     anchor="w").pack(fill="x", padx=12, pady=(10, 0))
+            tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 9),
+                     anchor="w").pack(fill="x", padx=12, pady=(0, 10))
+            cards.grid_columnconfigure(index, weight=1)
 
-        def render() -> None:
-            for child in inner.winfo_children():
-                child.destroy()
-            try:
-                data = self.api.get("/api/stats")
-            except Exception as exc:  # noqa: BLE001
-                tk.Label(inner, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
-                return
-            tk.Label(inner,
-                     text=f"Пользователей: {data.get('users', 0)} "
-                          f"(активных за 7 дней: {data.get('active_users_7d', 0)}) · "
-                          f"сборок: {data.get('collections', 0)} · "
-                          f"установок: {data.get('installs', 0)} · "
-                          f"просмотров: {data.get('views', 0)}",
-                     bg=BG, fg=TEXT, font=(FONT_BOLD, 10, "bold"), anchor="w", wraplength=760,
-                     justify="left").pack(fill="x", padx=18, pady=(14, 2))
-            tk.Label(inner, text=f"Комментариев: {data.get('comments', 0)} · "
-                                 f"оценок: {data.get('ratings', 0)} · "
-                                 f"отзывов с текстом: {data.get('reviews', 0)}",
-                     bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", padx=18)
+        def section(title: str) -> None:
+            tk.Label(page, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 13),
+                     anchor="w").pack(fill="x", pady=(10, 4))
 
-            def section(title: str) -> None:
-                tk.Label(inner, text=title, bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
-                         anchor="w").pack(fill="x", padx=18, pady=(12, 2))
+        section("Топ модов")
+        top = data.get("top_mods") or []
+        if not top:
+            tk.Label(page, text="Пока нет установок — статистика появится позже.",
+                     bg=BG, fg=DIM, font=(FONT, 10), anchor="w").pack(fill="x")
+        for index, row in enumerate(top[:8], start=1):
+            line = tk.Frame(page, bg=PANEL)
+            line.pack(fill="x", pady=2)
+            tk.Label(line, text=f"{index}. {row.get('title')}", bg=PANEL, fg=TEXT,
+                     font=(FONT, 10), anchor="w").pack(side="left", fill="x", expand=True,
+                                                       padx=12, pady=7)
+            tk.Label(line, text=f"установок {row.get('installs', 0)} · "
+                                f"кликов {row.get('downloads', 0)} · "
+                                f"просмотров {row.get('views', 0)}",
+                     bg=PANEL, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
 
-            section("Популярные моды (по установкам)")
-            if not data.get("top_mods"):
-                tk.Label(inner, text="Пока нет установок — статистика появится, когда моды "
-                                     "начнут ставить через BeamHub.",
-                         bg=BG, fg=DIM, font=(FONT, 9), anchor="w", wraplength=760,
-                         justify="left").pack(fill="x", padx=24)
-            for index, row in enumerate(data.get("top_mods", [])[:8], start=1):
-                tk.Label(inner,
-                         text=f"{index}. {row.get('title')} — установок "
-                              f"{row.get('installs', 0)}, кликов {row.get('downloads', 0)}, "
-                              f"просмотров {row.get('views', 0)}",
-                         bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=24)
+        section("Топ сборок")
+        for index, row in enumerate((data.get("top_collections") or [])[:8], start=1):
+            line = tk.Frame(page, bg=PANEL)
+            line.pack(fill="x", pady=2)
+            tk.Label(line, text=f"{index}. {row.get('title')}", bg=PANEL, fg=TEXT,
+                     font=(FONT, 10), anchor="w").pack(side="left", fill="x", expand=True,
+                                                       padx=12, pady=7)
+            tk.Label(line, text=f"установок {row.get('installs', 0)} · "
+                                f"просмотров {row.get('views', 0)} · "
+                                f"модов {row.get('items_count', 0)}",
+                     bg=PANEL, fg=DIM, font=(FONT, 9)).pack(side="right", padx=12)
 
-            section("Популярные сборки")
-            if not data.get("top_collections"):
-                tk.Label(inner, text="Опубликованных сборок пока нет.", bg=BG, fg=DIM,
-                         font=(FONT, 9), anchor="w").pack(fill="x", padx=24)
-            for index, row in enumerate(data.get("top_collections", [])[:8], start=1):
-                tk.Label(inner,
-                         text=f"{index}. {row.get('title')} — установок {row.get('installs', 0)}, "
-                              f"просмотров {row.get('views', 0)}, модов {row.get('items_count', 0)}",
-                         bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=24)
+        section("Категории")
+        categories = data.get("categories") or []
+        tk.Label(page, text=" · ".join(f"{row.get('category')} — {row.get('mods')}"
+                                       for row in categories[:8]) or "нет данных",
+                 bg=BG, fg=MUTED, font=(FONT, 10), anchor="w", wraplength=900,
+                 justify="left").pack(fill="x")
 
-            section("Популярные категории")
-            for row in data.get("categories", [])[:8]:
-                tk.Label(inner, text=f"{row.get('category')} — {row.get('mods')} модов",
-                         bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=24)
-
-            section("Активность за 14 дней")
-            activity = data.get("activity") or []
-            if not activity:
-                tk.Label(inner, text="Пока нет событий.", bg=BG, fg=DIM, font=(FONT, 9),
-                         anchor="w").pack(fill="x", padx=24)
-            for row in activity[-14:]:
-                tk.Label(inner, text=f"{row.get('day')} · {row.get('kind')}: {row.get('events')}",
-                         bg=BG, fg=MUTED, font=(FONT, 9), anchor="w").pack(fill="x", padx=24)
-            self._translate_ui(window)
-
-        render()
 
     def _open_page(self, item: dict) -> None:
         def work() -> None:
@@ -1641,39 +1627,33 @@ class App:
         self.set_coll_kind("mine")
 
     def my_profile(self) -> None:
-        window = tk.Toplevel(self.root, bg=BG)
-        window.title("Мой профиль")
-        window.geometry("620x560")
-        window.transient(self.root)
+        page = self._show_page("Мой профиль")
         try:
             data = self.api.get("/api/user", id=(self.user or {}).get("id"))
         except Exception as exc:  # noqa: BLE001
-            tk.Label(window, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(padx=20, pady=20)
+            tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
             return
         user = data.get("user") or {}
         stats = user.get("stats") or {}
         nick = user.get("nickname") or "профиль"
 
-        head = tk.Frame(window, bg=BG)
-        head.pack(fill="x", padx=20, pady=(18, 4))
-        badge = tk.Label(head, text=(nick[:1] or "?").upper(), bg=ACCENT, fg="#111318",
-                         font=(FONT_BOLD, 18, "bold"), width=2, height=1)
-        badge.pack(side="left")
+        head = tk.Frame(page, bg=BG)
+        head.pack(fill="x", pady=(0, 10))
+        tk.Label(head, text=(nick[:1] or "?").upper(), bg=ACCENT, fg="#111318",
+                 font=(FONT_BOLD, 20), width=2).pack(side="left")
         names = tk.Frame(head, bg=BG)
         names.pack(side="left", padx=12)
-        tk.Label(names, text=nick, bg=BG, fg=TEXT, font=(FONT_BOLD, 18, "bold"),
+        tk.Label(names, text=nick, bg=BG, fg=TEXT, font=(FONT_BOLD, 22),
                  anchor="w").pack(fill="x")
-        meta = " · ".join(filter(None, [user.get("email"),
-                                        f"с {human_date(user.get('created_at'))}"
-                                        if user.get("created_at") else ""]))
-        tk.Label(names, text=meta, bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
+        meta = " · ".join(filter(None, [
+            user.get("email"),
+            f"с {human_date(user.get('created_at'))}" if user.get("created_at") else "",
+            f"роль: {user.get('role')}" if user.get("role") else "",
+        ]))
+        tk.Label(names, text=meta, bg=BG, fg=DIM, font=(FONT, 10), anchor="w").pack(fill="x")
 
-        if user.get("bio"):
-            tk.Label(window, text=user["bio"], bg=BG, fg=MUTED, font=(FONT, 9), anchor="w",
-                     wraplength=560, justify="left").pack(fill="x", padx=20, pady=(6, 0))
-
-        cards = tk.Frame(window, bg=BG)
-        cards.pack(fill="x", padx=20, pady=(12, 4))
+        cards = tk.Frame(page, bg=BG)
+        cards.pack(fill="x", pady=(4, 10))
         numbers = (
             ("Сборки", stats.get("collections", 0)),
             ("Подписчики", user.get("followers", 0)),
@@ -1686,43 +1666,49 @@ class App:
         for index, (label, value) in enumerate(numbers):
             cell = tk.Frame(cards, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
             cell.grid(row=0, column=index, sticky="nsew", padx=(0, 6))
-            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 13, "bold"),
-                     anchor="w").pack(fill="x", padx=10, pady=(8, 0))
+            tk.Label(cell, text=str(value), bg=PANEL, fg=TEXT, font=(FONT_BOLD, 16),
+                     anchor="w").pack(fill="x", padx=12, pady=(10, 0))
             tk.Label(cell, text=label, bg=PANEL, fg=DIM, font=(FONT, 9),
-                     anchor="w").pack(fill="x", padx=10, pady=(0, 8))
-        for index in range(len(numbers)):
+                     anchor="w").pack(fill="x", padx=12, pady=(0, 10))
             cards.grid_columnconfigure(index, weight=1)
 
-        tk.Label(window, text="Опубликованные сборки", bg=BG, fg=TEXT, font=(FONT_BOLD, 11, "bold"),
-                 anchor="w").pack(fill="x", padx=20, pady=(12, 2))
+        actions = tk.Frame(page, bg=BG)
+        actions.pack(fill="x", pady=(0, 12))
+        theme.RoundButton(actions, "＋ Создать сборку", self.create_collection,
+                          variant="primary", height=34, radius=10,
+                          font=(FONT_BOLD, 10)).pack(side="left")
+        theme.RoundButton(actions, "Мои сборки", self._menu_my_collections, height=34,
+                          radius=10, font=(FONT, 10)).pack(side="left", padx=8)
+        theme.RoundButton(actions, "Настройки", lambda: self.switch("settings"), height=34,
+                          radius=10, font=(FONT, 10)).pack(side="left")
+        if self.is_moderator():
+            theme.RoundButton(actions, "Админ-панель", self.admin_panel, height=34,
+                              radius=10, font=(FONT, 10)).pack(side="left", padx=8)
+        theme.RoundButton(actions, "Выйти", self.logout, height=34, radius=10,
+                          font=(FONT, 10)).pack(side="right")
+
+        tk.Label(page, text="Мои сборки", bg=BG, fg=TEXT, font=(FONT_BOLD, 13),
+                 anchor="w").pack(fill="x", pady=(4, 4))
         collections_list = user.get("collections") or []
         if not collections_list:
-            tk.Label(window, text="Пока пусто — создайте первую сборку.", bg=BG, fg=DIM,
-                     font=(FONT, 9), anchor="w").pack(fill="x", padx=20)
-        for row in collections_list[:6]:
-            line = tk.Frame(window, bg=BG)
-            line.pack(fill="x", padx=20, pady=2)
+            tk.Label(page, text="Пока пусто — создайте первую сборку.", bg=BG, fg=DIM,
+                     font=(FONT, 10), anchor="w").pack(fill="x")
+        for row in collections_list[:8]:
+            line = tk.Frame(page, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
+            line.pack(fill="x", pady=3)
             rating = row.get("rating") or {}
-            subtitle = (f"модов {row.get('items_count', 0)} · ★ {float(rating.get('avg') or 0):.1f}"
-                        f" ({rating.get('count', 0)}) · {row.get('installs', 0)} установок")
-            tk.Label(line, text=row.get("title") or "сборка", bg=BG, fg=TEXT, font=(FONT, 9),
-                     anchor="w").pack(side="left")
-            tk.Label(line, text=subtitle, bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(
-                side="left", padx=8)
+            tk.Label(line, text=row.get("title") or "сборка", bg=PANEL, fg=TEXT,
+                     font=(FONT_BOLD, 11), anchor="w").pack(side="left", fill="x",
+                                                            expand=True, padx=12, pady=9)
+            tk.Label(line, text=f"модов {row.get('items_count', 0)} · "
+                                f"★ {float(rating.get('avg') or 0):.1f} "
+                                f"({rating.get('count', 0)}) · "
+                                f"{row.get('installs', 0)} установок",
+                     bg=PANEL, fg=DIM, font=(FONT, 9)).pack(side="left", padx=8)
             theme.RoundButton(line, "Открыть",
                               lambda c=row.get("id"): self.collection_details(c),
-                              height=24, radius=8, font=(FONT, 9)).pack(side="right")
+                              height=28, radius=8, font=(FONT, 9)).pack(side="right", padx=10)
 
-        actions = tk.Frame(window, bg=BG)
-        actions.pack(fill="x", padx=20, pady=16)
-        theme.RoundButton(actions, "Мои сборки", self._menu_my_collections,
-                          variant="primary", height=32, radius=9,
-                          font=(FONT_BOLD, 9, "bold")).pack(side="left")
-        theme.RoundButton(actions, "Настройки", lambda: self.switch("settings"),
-                          height=32, radius=9, font=(FONT, 9)).pack(side="left", padx=8)
-        theme.RoundButton(actions, "Закрыть", window.destroy, height=32, radius=9,
-                          font=(FONT, 9)).pack(side="left")
-        self._translate_ui(window)
 
     def open_auth(self) -> None:
         if self.user:

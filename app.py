@@ -54,7 +54,7 @@ def _startup_failure(details: str) -> None:
 
 
 try:
-    from core import (accounts, cloud, cloud_check, cloud_email, cloud_moderation,
+    from core import (accounts, official, cloud, cloud_check, cloud_email, cloud_moderation,
                       cloud_session, cloud_social, cloud_sync, collections, compat,
                       config, db, enrich, feedback, installer, matcher, moderation,
                       recommend, security, social, updater)  # noqa: E402
@@ -1374,6 +1374,12 @@ def bootstrap() -> None:
     seed_database()
     config.load()
     db.init()
+    try:
+        created = official.ensure()
+        if created:
+            print(f"[beamhub] официальных сборок добавлено: {created}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[beamhub] official collections: {exc}")
     try:
         installer.scan_library()
         stats = matcher.match_all()
