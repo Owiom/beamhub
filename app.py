@@ -396,10 +396,12 @@ class Handler(BaseHTTPRequestHandler):
                 has_image = (query.get("img") or ["0"])[0] == "1"
                 favorites_only = (query.get("fav") or ["0"])[0] == "1"
                 verified_only = (query.get("verified") or ["0"])[0] == "1"
+                fresh_only = (query.get("fresh") or ["0"])[0] == "1"
                 result = db.query_mods(q=q, category=category, source=source, sort=sort,
                                        offset=offset, limit=limit, game=game,
                                        has_image=has_image, favorites_only=favorites_only,
-                                       verified_only=verified_only)
+                                       verified_only=verified_only,
+                                       fresh_only=fresh_only)
                 favorites = db.favorite_ids()
                 dups = db.title_key_counts({m.get("title_key") for m in result["items"]})
                 self._json({

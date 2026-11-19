@@ -342,7 +342,7 @@ def pending_enrich(limit: int = 5000, max_age: int = 60 * 60 * 24 * 30) -> list[
 def query_mods(q: str = "", category: str = "", source: str = "", sort: str = "new",
                offset: int = 0, limit: int = 60, enriched_only: bool = False,
                game: str = "", has_image: bool = False, favorites_only: bool = False,
-               verified_only: bool = False) -> dict:
+               verified_only: bool = False, fresh_only: bool = False) -> dict:
     where = ["source NOT IN ('playground')"]
     params: list = []
     if q:
@@ -366,6 +366,8 @@ def query_mods(q: str = "", category: str = "", source: str = "", sort: str = "n
         where.append("id IN (SELECT mod_id FROM favorites)")
     if verified_only:
         where.append("description <> '' AND image <> ''")
+    if fresh_only:
+        where.append("published > strftime('%s','now') - 30*86400")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     order = {
         "new": "published DESC, title COLLATE NOCASE ASC",

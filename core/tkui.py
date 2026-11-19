@@ -370,10 +370,12 @@ class App:
         self.filter_image = tk.BooleanVar(value=False)
         self.filter_fav = tk.BooleanVar(value=False)
         self.filter_verified = tk.BooleanVar(value=False)
+        self.filter_fresh = tk.BooleanVar(value=False)
         self.filter_chips: dict[str, object] = {}
         for text, var, key in (("0.40.x", self.filter_game, "game"),
                                ("с обложкой", self.filter_image, "image"),
                                ("проверенные", self.filter_verified, "verified"),
+                               ("свежие", self.filter_fresh, "fresh"),
                                ):
             chip = theme.RoundButton(filters, text, lambda v=var, k=key: self._toggle_chip(v, k),
                                      height=28, radius=14, bg=SURFACE_2, fg=MUTED,
@@ -649,7 +651,8 @@ class App:
     def _paint_chips(self) -> None:
         for key, var in (("game", self.filter_game), ("image", self.filter_image),
                          ("fav", self.filter_fav),
-                         ("verified", self.filter_verified)):
+                         ("verified", self.filter_verified),
+                         ("fresh", self.filter_fresh)):
             chip = self.filter_chips.get(key)
             if chip is None:
                 continue
@@ -1243,6 +1246,8 @@ class App:
             params["fav"] = "1"
         if self.filter_verified.get():
             params["verified"] = "1"
+        if self.filter_fresh.get():
+            params["fresh"] = "1"
         try:
             data = self.api.get("/api/mods", **params)
         except Exception as exc:  # noqa: BLE001
@@ -1306,6 +1311,7 @@ class App:
         self.filter_image.set(False)
         self.filter_fav.set(False)
         self.filter_verified.set(False)
+        self.filter_fresh.set(False)
         try:
             self.search_var.set("")
         except Exception:  # noqa: BLE001
@@ -1399,6 +1405,8 @@ class App:
             params["fav"] = "1"
         if self.filter_verified.get():
             params["verified"] = "1"
+        if self.filter_fresh.get():
+            params["fresh"] = "1"
         try:
             data = self.api.get("/api/mods", **params)
         except Exception as exc:  # noqa: BLE001
@@ -1423,6 +1431,8 @@ class App:
             params["fav"] = "1"
         if self.filter_verified.get():
             params["verified"] = "1"
+        if self.filter_fresh.get():
+            params["fresh"] = "1"
         try:
             data = self.api.get("/api/mods", **params)
         except Exception as exc:  # noqa: BLE001
