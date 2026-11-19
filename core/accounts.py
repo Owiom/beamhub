@@ -54,11 +54,26 @@ def _email_taken(email: str, except_id: str = "") -> bool:
 
 
 def _maybe_first_admin(user_id: str) -> None:
-    """Если это единственный аккаунт — даём админку, чтобы было кому управлять."""
-    total = db.query_one("SELECT COUNT(*) AS c FROM users")
-    admins = db.query_one("SELECT COUNT(*) AS c FROM users WHERE role='admin'")
-    if (total or {}).get("c") == 1 and not (admins or {}).get("c"):
-        db.execute("UPDATE users SET role='admin' WHERE id=?", (user_id,))
+    """Первый локальный аккаунт получает админку, если локальных админов ещё нет.
+
+    Служебные аккаунты (BeamHub Team, облачные) не мешают: они не «local».
+    """
+    local_admins = db.query_one(
+        "SELECT COUNT(*) AS c FROM users WHERE role='admin' AND provider='local'")
+    if not (local_admins or {}).get("c"):
+        db.execute("UPDATE users SET role='admin' WHERE id=? AND provider='local'", (user_id,))
+
+
+def ensure_local_admin() -> None:
+    """Если среди локальных аккаунтов нет админа — делаем админом самый старый."""
+    row = db.query_one(
+        "SELECT COUNT(*) AS c FROM users WHERE role='admin' AND provider='local'")
+    if (row or {}).get("c"):
+        return
+    first = db.query_one(
+        "SELECT id FROM users WHERE provider='local' ORDER BY created_at ASC LIMIT 1")
+    if first:
+        db.execute("UPDATE users SET role='admin' WHERE id=?", (first["id"],))
 
 
 def register(email: str, password: str, nickname: str) -> dict:

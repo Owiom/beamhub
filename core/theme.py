@@ -33,8 +33,14 @@ PALETTE = {
     "accent_soft_text": "#ffc08a",
     "on_accent": "#170d04",     # текст на оранжевом
     "success": "#34c87b",
+    "success_soft": "#16241a",   # плашка «установлен», «проверено»
+    "success_text": "#9fe3b4",
     "warning": "#f2b33d",
+    "warning_soft": "#2a2210",
+    "warning_text": "#ffd6a3",
     "danger": "#f05252",
+    "danger_soft": "#2a1518",    # удаление, ошибка
+    "danger_text": "#ff9a9a",
 }
 
 # Плоские псевдонимы: удобно, когда модуль импортирует конкретные цвета.
@@ -633,4 +639,64 @@ class RoundedFrame(tk.Canvas):
     def set_fill(self, color: str) -> None:
         self._fill = color
         self.body.configure(bg=color)
+        self._draw()
+
+
+class ToggleSwitch(tk.Canvas):
+    """Переключатель 44×24 для настроек: включено — акцент, выключено — surface_3.
+
+    Использует тот же BooleanVar, что и Checkbutton, поэтому логика настроек
+    не меняется: меняется только внешний вид.
+    """
+
+    WIDTH = 44
+    HEIGHT = 24
+
+    def __init__(self, parent: tk.Misc, variable: tk.BooleanVar, command=None,
+                 **kwargs) -> None:
+        try:
+            parent_bg = parent.cget("bg")
+        except Exception:  # noqa: BLE001
+            parent_bg = PALETTE["bg"]
+        super().__init__(parent, width=self.WIDTH, height=self.HEIGHT, bg=parent_bg,
+                         highlightthickness=0, bd=0, cursor="hand2", **kwargs)
+        self._var = variable
+        self._command = command
+        self._hovered = False
+        self._draw()
+        self.bind("<Button-1>", self._toggle)
+        self.bind("<Enter>", self._enter)
+        self.bind("<Leave>", self._leave)
+
+    def _draw(self) -> None:
+        self.delete("all")
+        width, height = self.WIDTH, self.HEIGHT
+        on = bool(self._var.get())
+        track = PALETTE["accent"] if on else PALETTE["surface_3"]
+        if self._hovered:
+            track = (mix(track, "#ffffff", 0.10) if on
+                     else mix(track, "#ffffff", 0.07))
+        rounded_rect(self, 1, 1, width - 1, height - 1, (height - 2) // 2,
+                     fill=track, outline="")
+        radius = height // 2 - 4
+        cx = (width - radius - 4) if on else (radius + 4)
+        self.create_oval(cx - radius, height // 2 - radius,
+                         cx + radius, height // 2 + radius,
+                         fill=PALETTE["text"], outline="")
+
+    def _toggle(self, _event=None) -> None:
+        self._var.set(not self._var.get())
+        self._draw()
+        if self._command:
+            self._command()
+
+    def _enter(self, _event=None) -> None:
+        self._hovered = True
+        self._draw()
+
+    def _leave(self, _event=None) -> None:
+        self._hovered = False
+        self._draw()
+
+    def refresh(self) -> None:
         self._draw()

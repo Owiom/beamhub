@@ -894,7 +894,8 @@ class Handler(BaseHTTPRequestHandler):
             if not user:
                 return True
             self._json(accounts.update_profile(user["id"], **{
-                k: body[k] for k in ("nickname", "bio", "avatar_color") if k in body}))
+                k: body[k] for k in ("nickname", "bio", "avatar_color", "avatar_url")
+                if k in body}))
             return True
         if path == "/api/follow":
             user = self._require_user()
@@ -1518,6 +1519,10 @@ def bootstrap() -> None:
                 print(f"[beamhub] удалено торрент-модов: {removed}")
     except Exception as exc:  # noqa: BLE001
         print(f"[beamhub] torrent purge: {exc}")
+    try:
+        accounts.ensure_local_admin()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[beamhub] local admin: {exc}")
     try:
         created = official.ensure()
         if created:
