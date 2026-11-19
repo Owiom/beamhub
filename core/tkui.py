@@ -131,6 +131,7 @@ class App:
         self.source = "all"
         self.offset = 0
         self.total = 0
+        self.page_no = 1
         self.items: list[dict] = []
         self._images: dict[str, object] = {}
         self._img_queue: list[tuple[str, str]] = []
@@ -708,6 +709,7 @@ class App:
         if not append:
             self.offset = 0
             self.items = []
+            self.page_no = 1
             self._clear()
             self.count_label.configure(text="загружаю…")
         params = {"q": self.query, "cat": self.category, "sort": self.sort,
@@ -743,7 +745,7 @@ class App:
                 width = 0
         if width <= 200:
             width = 1100
-        return max(2, min(10, width // 250))
+        return max(2, min(10, width // (IMG_W + 36)))
 
     def _on_resize(self, _event=None) -> None:
         """На широком окне показываем больше карточек в ряд (с задержкой)."""
@@ -777,12 +779,70 @@ class App:
             card = self._card(frame, item)
             card.grid(row=row, column=col, padx=7, pady=7, sticky="n")
         more_row = (len(self.items) + columns - 1) // columns
+        pager = tk.Frame(frame, bg=BG)
+        pager.grid(row=more_row, column=0, columnspan=columns, pady=16)
+        page_size = 24
+        pages = max(1, (self.total + page_size - 1) // page_size)
+        current = self.page_no
+
+        def page_button(label: str, target: int, enabled: bool = True) -> None:
+            button = theme.RoundButton(pager, label,
+                                       (lambda: self.goto_page(target)) if enabled else None,
+                                       height=30, width=38, radius=8, font=(FONT, 9),
+                                       variant=("primary" if target == current and enabled
+                                                else "ghost"))
+            button.pack(side="left", padx=2)
+
+        if pages > 1:
+            page_button("‹", current - 1, current > 1)
+            first = 1
+            last = pages
+            if pages > 7:
+                first = max(1, current - 2)
+                last = min(pages, first + 4)
+                first = max(1, last - 4)
+            if first > 1:
+                page_button("1", 1)
+                if first > 2:
+                    tk.Label(pager, text="…", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
+            for number in range(first, last + 1):
+                page_button(str(number), number)
+            if last < pages:
+                if last < pages - 1:
+                    tk.Label(pager, text="…", bg=BG, fg=DIM, font=(FONT, 9)).pack(side="left")
+                page_button(str(pages), pages)
+            page_button("›", current + 1, current < pages)
+
         if len(self.items) < self.total:
-            tk.Button(frame, text="Показать ещё", bg=PANEL, fg=TEXT, relief="flat",
-                      font=(FONT, 10), padx=18, pady=8, cursor="hand2",
-                      activebackground="#232833",
-                      command=self.load_more).grid(row=more_row, column=0, columnspan=columns,
-                                                   pady=14)
+            theme.RoundButton(pager, "Показать ещё", self.load_more, height=30, radius=8,
+                              font=(FONT, 9)).pack(side="left", padx=(10, 0))
+
+    def goto_page(self, page: int) -> None:
+        page = max(1, page)
+        self.page_no = page
+        self.offset = (page - 1) * 24
+        self.items = []
+        self._clear()
+        self.count_label.configure(text="загружаю…")
+        params = {"q": self.query, "cat": self.category, "sort": self.sort,
+                  "source": self.source, "offset": self.offset, "limit": 24}
+        if self.filter_game.get():
+            params["game"] = "0.40.x"
+        if self.filter_image.get():
+            params["img"] = "1"
+        if self.filter_fav.get():
+            params["fav"] = "1"
+        try:
+            data = self.api.get("/api/mods", **params)
+        except Exception as exc:  # noqa: BLE001
+            self.count_label.configure(text=f"ошибка: {exc}")
+            return
+        self.total = data.get("total", 0)
+        self.items = data.get("items", [])
+        self.count_label.configure(text=f"{self.total} модов · стр. {self.page_no}")
+        self._columns = 0
+        self._render_cards(False)
+        self.canvas.yview_moveto(0.0)
 
     def load_more(self) -> None:
         self.offset = len(self.items)
@@ -801,7 +861,9 @@ class App:
             return
         self.items.extend(data.get("items", []))
         self.total = data.get("total", self.total)
+        self.page_no = (len(self.items) + 23) // 24
         self._render_cards(True)
+        self.root.after(120, lambda: self.canvas.yview_moveto(1.0))
 
     def _bind_click_tree(self, widget: tk.Misc, callback) -> None:
         """Клик по любому месту плитки, кроме кнопок — у них своё действие."""
@@ -2572,27 +2634,29 @@ class App:
     def pick_mod(self, coll_id: str, window: tk.Misc | None = None) -> None:
         page = self._show_page("Добавить мод в сборку",
                                back=lambda: self.collection_details(coll_id))
-        state = {"cat": "", "q": ""}
-
+        state = {"cat": "", "q": "", "offset": 0, "total": 0}
         top = tk.Frame(page, bg=BG)
         top.pack(fill="x", pady=(0, 6))
         search = tk.Entry(top, bg=PANEL, fg=TEXT, relief="flat", insertbackground=TEXT,
                           font=(FONT, 10))
-        search.pack(side="left", fill="x", expand=True, ipady=4)
-        theme.RoundButton(top, "Найти", lambda: (state.update({"q": search.get().strip()}),
-                                                 draw()), height=30, radius=8,
-                          font=(FONT, 9)).pack(side="left", padx=6)
-        search.bind("<Return>", lambda _e: (state.update({"q": search.get().strip()}), draw()))
+        search.pack(side="left", fill="x", expand=True, ipady=6)
+        theme.RoundButton(top, "Найти", lambda: (state.update({"q": search.get().strip(),
+                                                              "offset": 0}), draw(True)),
+                          height=32, radius=8, font=(FONT, 9)).pack(side="left", padx=6)
+        search.bind("<Return>", lambda _e: (state.update({"q": search.get().strip(),
+                                                          "offset": 0}), draw(True)))
 
         chips = tk.Frame(page, bg=BG)
-        chips.pack(fill="x", pady=(0, 6))
-
+        chips.pack(fill="x", pady=(0, 8))
         grid = tk.Frame(page, bg=BG)
         grid.pack(fill="both", expand=True)
+        more_slot = tk.Frame(page, bg=BG)
+        more_slot.pack(fill="x", pady=10)
 
         def set_cat(cat: str) -> None:
             state["cat"] = cat
-            draw()
+            state["offset"] = 0
+            draw(True)
 
         def draw_chips() -> None:
             for child in chips.winfo_children():
@@ -2600,16 +2664,21 @@ class App:
             options = [("", "Все")] + [(row["key"], f"{row['label']} ({row['count']})")
                                        for row in self._pick_categories()]
             for key, label in options:
-                theme.RoundButton(chips, label, lambda k=key: set_cat(k), height=28,
+                theme.RoundButton(chips, label, lambda k=key: set_cat(k), height=30,
                                   radius=14, font=(FONT, 9),
                                   variant=("primary" if state["cat"] == key else "ghost")
                                   ).pack(side="left", padx=(0, 6))
 
-        def draw() -> None:
+        def draw(reset: bool = True) -> None:
             draw_chips()
-            for child in grid.winfo_children():
-                child.destroy()
-            params = {"limit": 60}
+            if reset:
+                for child in grid.winfo_children():
+                    child.destroy()
+            else:
+                for child in list(grid.winfo_children())[-1:]:
+                    if getattr(child, "_is_more", False):
+                        child.destroy()
+            params = {"limit": 60, "offset": state["offset"]}
             if state["q"]:
                 params["q"] = state["q"]
             if state["cat"]:
@@ -2620,7 +2689,8 @@ class App:
                 tk.Label(grid, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
                 return
             items = data.get("items", [])
-            if not items:
+            state["total"] = data.get("total", state["total"])
+            if not items and reset:
                 tk.Label(grid, text="Ничего не нашлось — попробуйте другой запрос.",
                          bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x", pady=8)
             for mod in items:
@@ -2639,8 +2709,7 @@ class App:
                          font=(FONT_BOLD, 10), anchor="w").pack(fill="x")
                 meta = " · ".join(filter(None, [
                     CATEGORY_LABELS.get(mod.get("category") or "", mod.get("category") or ""),
-                    f"{mod.get('size_text')}" if mod.get("size_text") else "",
-                    f"★ {mod.get('rating')}" if mod.get("rating") else "",
+                    mod.get("size_text") or "",
                 ]))
                 tk.Label(info, text=meta, bg=PANEL, fg=DIM, font=(FONT, 8),
                          anchor="w").pack(fill="x")
@@ -2649,57 +2718,22 @@ class App:
                                   variant="primary", height=28, radius=8,
                                   font=(FONT_BOLD, 8)).pack(side="right", padx=8)
                 self._bind_click_tree(row, lambda m=mod: self.details(m))
-                for child in row.winfo_children():
-                    if isinstance(child, theme.RoundButton):
-                        child.unbind("<Button-1>")
-                        child.bind("<Button-1>",
-                                   lambda _e, m=mod: self._add_to_collection_page(coll_id, m))
-            self._translate_ui(page)
+            if len(items) + state["offset"] < state["total"]:
+                more = tk.Frame(grid, bg=BG)
+                more._is_more = True  # type: ignore[attr-defined]
+                more.pack(fill="x", pady=10)
+                theme.RoundButton(more, f"Показать ещё ({state['total'] - state['offset'] - len(items)} осталось)",
+                                  lambda: (state.update({"offset": state["offset"] + len(items)}),
+                                           draw(False)), height=32, radius=8,
+                                  font=(FONT_BOLD, 9)).pack()
 
         def search_now(*_args) -> None:
             state["q"] = search.get().strip()
-            draw()
+            state["offset"] = 0
+            draw(True)
 
         search.bind("<Return>", search_now)
-        draw()
-
-    def pick_collection_for_mod(self, mod: dict) -> None:
-        """Выбор сборки на странице мода — без скрытых панелей."""
-        if not self.user:
-            self.open_auth()
-            return
-        page = self._show_page(f"Добавить «{mod.get('title') or ''}» в сборку",
-                               back=lambda: self.details(mod))
-        try:
-            data = self.api.get("/api/collections", kind="mine", limit=40)
-        except Exception as exc:  # noqa: BLE001
-            tk.Label(page, text=f"Ошибка: {exc}", bg=BG, fg=MUTED).pack(anchor="w")
-            return
-        mine = data.get("items", [])
-        if not mine:
-            tk.Label(page, text="Сборок пока нет — создайте первую в разделе «Сборки».",
-                     bg=BG, fg=DIM, font=(FONT, 9), anchor="w").pack(fill="x")
-            return
-
-        def add(coll_id: str) -> None:
-            result = self.api.post("/api/collections/items",
-                                   {"id": coll_id, "mod_id": mod["id"], "action": "add"})
-            if not result.get("ok"):
-                self.toast(result.get("error", "Не получилось"), "error")
-                return
-            self.toast(f"Добавлено в «{next((c.get('title') for c in mine if c['id'] == coll_id), '')}»", "ok")
-
-        for coll in mine:
-            row = tk.Frame(page, bg=PANEL, highlightthickness=1, highlightbackground=LINE)
-            row.pack(fill="x", pady=3)
-            tk.Label(row, text=coll.get("title") or "сборка", bg=PANEL, fg=TEXT,
-                     font=(FONT_BOLD, 10), anchor="w").pack(side="left", fill="x",
-                                                            expand=True, padx=10, pady=8)
-            tk.Label(row, text=f"{coll.get('items_count', 0)} модов", bg=PANEL, fg=DIM,
-                     font=(FONT, 8)).pack(side="left", padx=6)
-            theme.RoundButton(row, "Добавить", lambda c=coll["id"]: add(c), variant="primary",
-                              height=28, radius=8,
-                              font=(FONT_BOLD, 8)).pack(side="right", padx=8)
+        draw(True)
 
     def _add_to_collection_page(self, coll_id: str, mod: dict) -> None:
         result = self.api.post("/api/collections/items",
