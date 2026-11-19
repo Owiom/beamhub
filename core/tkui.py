@@ -2496,6 +2496,7 @@ class App:
         except Exception:  # noqa: BLE001
             pass
         self.toast("Вы вышли из аккаунта")
+        self._coll_form = None
         self._apply_user()
         self.refresh_all()
 
@@ -3055,7 +3056,7 @@ class App:
                 tk.Label(head_line, text=review["nickname"], bg=PANEL, fg=TEXT,
                          font=(FONT_BOLD, BODY_PX, "bold")).pack(side="left", padx=6)
                 if review.get("installed"):
-                    self._pill(head_line, "✓ установил", "ok").pack(side="left", padx=(2, 0))
+                    self._pill(head_line, "✓ есть в библиотеке", "ok").pack(side="left", padx=(2, 0))
                 tk.Label(line, text=review["review"], bg=PANEL, fg=MUTED,
                          font=(FONT, BODY_PX), wraplength=980, justify="left",
                          anchor="w").pack(fill="x", pady=(4, 0))
@@ -3731,8 +3732,6 @@ class App:
                              "count": 0}]
         except Exception:  # noqa: BLE001
             return []
-
-    MOD_PICK_CATEGORIES = ("cars", "maps", "skins", "configs", "mods", "other")
 
     def pick_mod(self, coll_id: str, window: tk.Misc | None = None) -> None:
         page = self._show_page("Добавить мод в сборку",

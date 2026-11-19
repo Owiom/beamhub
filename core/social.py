@@ -255,4 +255,5 @@ def has_installed(user_id: str, target_type: str, target_id: str) -> bool:
     plan = collections.plan(target_id, user_id)
     if not plan.get("ok"):
         return False
-    return bool(plan.get("installed"))
+    total = int(plan.get("total") or 0)
+    return total > 0 and not (plan.get("missing") or [])

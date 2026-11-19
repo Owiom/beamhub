@@ -839,18 +839,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/stats":
             self._json({"ok": True, **collections.stats_public()})
             return True
-        if path == "/api/search/log":
-            query = (body.get("q") or "").strip()[:80]
-            if query:
-                raw = db.get_meta("recent_searches") or "[]"
-                try:
-                    items = json.loads(raw)
-                except json.JSONDecodeError:
-                    items = []
-                items = [query] + [item for item in items if item != query][:9]
-                db.set_meta("recent_searches", json.dumps(items, ensure_ascii=False))
-            self._json({"ok": True})
-            return True
         if path == "/api/recommend/mods":
             mod_id = arg("id")
             if mod_id:
@@ -883,6 +871,18 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _platform_post(self, path: str, body: dict) -> bool:
+        if path == "/api/search/log":
+            query = (body.get("q") or "").strip()[:80]
+            if query:
+                raw = db.get_meta("recent_searches") or "[]"
+                try:
+                    items = json.loads(raw)
+                except json.JSONDecodeError:
+                    items = []
+                items = [query] + [item for item in items if item != query][:9]
+                db.set_meta("recent_searches", json.dumps(items, ensure_ascii=False))
+            self._json({"ok": True})
+            return True
         if path == "/api/auth/register":
             result = accounts.register(body.get("email", ""), body.get("password", ""),
                                        body.get("nickname", ""))
