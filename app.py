@@ -451,6 +451,8 @@ class Handler(BaseHTTPRequestHandler):
                         "mod_id": row.get("mod_id") or "",
                         "title": row.get("title") or Path(row["filename"]).stem,
                         "filename": row["filename"],
+                        "archive_name": row.get("archive_name") or "",
+                        "sha256": row.get("sha256") or "",
                         "path": row["path"],
                         "size": row.get("size") or 0,
                         "size_text": human_size(row.get("size") or 0),

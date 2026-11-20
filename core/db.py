@@ -231,6 +231,8 @@ def init() -> None:
             columns = {row["name"] for row in _conn.execute("PRAGMA table_info(installed)")}
             if "version" not in columns:
                 _conn.execute("ALTER TABLE installed ADD COLUMN version TEXT DEFAULT ''")
+            if "archive_name" not in columns:
+                _conn.execute("ALTER TABLE installed ADD COLUMN archive_name TEXT DEFAULT ''")
             mod_columns = {row["name"] for row in _conn.execute("PRAGMA table_info(mods)")}
             if "downloads" not in mod_columns:
                 _conn.execute("ALTER TABLE mods ADD COLUMN downloads INTEGER DEFAULT 0")
@@ -413,15 +415,17 @@ def installed_by_hash(sha: str) -> dict | None:
 def installed_add(entry: dict) -> None:
     with _lock:
         _db().execute(
-            "INSERT INTO installed(key,mod_id,filename,path,sha256,size,installed_at,active,source_url,title,version) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET "
-            "mod_id=excluded.mod_id, filename=excluded.filename, path=excluded.path, sha256=excluded.sha256, "
-            "size=excluded.size, installed_at=excluded.installed_at, active=excluded.active, "
-            "source_url=excluded.source_url, title=excluded.title, version=excluded.version",
+            "INSERT INTO installed(key,mod_id,filename,path,sha256,size,installed_at,active,"
+            "source_url,title,version,archive_name) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET "
+            "mod_id=excluded.mod_id, filename=excluded.filename, path=excluded.path, "
+            "sha256=excluded.sha256, size=excluded.size, installed_at=excluded.installed_at, "
+            "active=excluded.active, source_url=excluded.source_url, title=excluded.title, "
+            "version=excluded.version, archive_name=excluded.archive_name",
             (entry["key"], entry.get("mod_id"), entry.get("filename"), entry.get("path"),
              entry.get("sha256"), entry.get("size", 0), entry.get("installed_at", now_ts()),
              1 if entry.get("active", True) else 0, entry.get("source_url", ""),
-             entry.get("title", ""), entry.get("version", "")),
+             entry.get("title", ""), entry.get("version", ""), entry.get("archive_name", "")),
         )
         _db().commit()
 

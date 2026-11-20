@@ -207,3 +207,29 @@ def is_game_running() -> bool:
         running = False
     _game_state.update({"checked": now, "running": running})
     return running
+
+
+def title_tokens(text: str) -> set[str]:
+    """Слова нормализованного названия — для нечёткого сравнения."""
+    return {part for part in title_key(text).split() if len(part) > 1 or part.isdigit()}
+
+
+def looks_installed(name: str, installed_keys: set[str],
+                    installed_tokens: list[set[str]], sha256: str = "",
+                    installed_hashes: set[str] | None = None) -> bool:
+    """Архив уже стоит? Сверяем хэш, точное имя и похожие наборы слов."""
+    if sha256 and installed_hashes and sha256.lower() in installed_hashes:
+        return True
+    key = title_key(name)
+    if key in installed_keys:
+        return True
+    tokens = title_tokens(name)
+    if len(tokens) < 2:
+        return False
+    for other in installed_tokens:
+        if len(other) < 2:
+            continue
+        common = tokens & other
+        if len(common) >= 2 and len(common) >= 0.6 * min(len(tokens), len(other)):
+            return True
+    return False

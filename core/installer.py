@@ -137,7 +137,14 @@ def inspect_archive(path: Path) -> dict:
         result["valid"] = True
         result["kind"] = "other"
     else:
-        result["error"] = "unknown_layout"
+        # архив-контейнер: внутри только ZIP-файлы (частый случай у сборок колёс)
+        zips = [n for n in rel if n.lower().endswith(".zip")]
+        if zips and len(zips) == len([n for n in rel if not n.endswith("/")]):
+            result["valid"] = True
+            result["kind"] = "bundle"
+            result["nested"] = zips
+        else:
+            result["error"] = "unknown_layout"
     return result
 
 
@@ -227,6 +234,32 @@ def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None
             return {"status": "error",
                     "message": "Это не похоже на мод BeamNG.drive (нет levels/, vehicles/, ui/ или info.json)"}
 
+        if info.get("kind") == "bundle":
+            inner_dir = workdir / "inner"
+            inner_dir.mkdir()
+            items: list[dict] = []
+            with zipfile.ZipFile(archive) as src:
+                for name in info.get("nested") or []:
+                    inner = inner_dir / Path(name).name
+                    with open(inner, "wb") as handle:
+                        handle.write(src.read(name))
+                    items.append(install_archive(inner, None, cfg, False))
+            ok = [item for item in items
+                  if item.get("status") in ("installed", "duplicate")]
+            if not ok:
+                return {"status": "error",
+                        "message": "Внутри архива не нашлось модов BeamNG.drive"}
+            if move_archive:
+                try:
+                    archive.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            return {"status": "installed" if any(x.get("status") == "installed"
+                                                 for x in ok) else "duplicate",
+                    "installed": (ok[0].get("installed") or {}),
+                    "count": len(ok), "items": ok,
+                    "message": f"Установлено модов из архива: {len(ok)}"}
+
         digest = sha256_file(archive)
         duplicate = db.installed_by_hash(digest)
         if duplicate:
@@ -260,6 +293,7 @@ def install_archive(path: Path, mod: dict | None = None, cfg: dict | None = None
             "source_url": (mod or {}).get("url", ""),
             "title": display_name,
             "version": (mod or {}).get("version", ""),
+            "archive_name": path.name,
         }
         db.installed_add(entry)
         if mod and mod.get("id"):

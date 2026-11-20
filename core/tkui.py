@@ -21,7 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 from . import cloud, cloud_defaults, config, display, i18n, theme
 from .version import VERSION
 from .util import (CATEGORY_LABELS, CATEGORY_ORDER, human_ago, human_date, human_size,
-                    title_key)
+                    looks_installed, title_key, title_tokens)
 
 BG = "#08090c"
 SOFT = "#0d0f14"
@@ -4091,6 +4091,10 @@ class App:
         installed_names = {str(item.get("filename") or "").lower() for item in library_items}
         installed_hashes = {str(item.get("sha256") or "").lower() for item in library_items}
         installed_hashes.discard("")
+        installed_archives = {str(item.get("archive_name") or "").lower() for item in library_items}
+        installed_archives.discard("")
+        installed_tokens = [title_tokens(str(item.get("title") or item.get("filename") or ""))
+                            for item in library_items]
         installed_keys = {title_key(item.get("title") or item.get("filename") or "")
                           for item in library_items}
         installed_keys.discard("")
@@ -4100,9 +4104,10 @@ class App:
                      bg=BG, fg=DIM, font=(FONT, CAPTION_PX), anchor="w",
                      wraplength=1100, justify="left").pack(fill="x", pady=(0, 6))
         for row in items:
-            already = (str(row.get("name") or "").lower() in installed_names
-                       or title_key(row.get("name") or "") in installed_keys
-                       or str(row.get("sha256") or "").lower() in installed_hashes)
+            already = (str(row.get("name") or "").lower() in installed_archives
+                       or looks_installed(str(row.get("name") or ""), installed_keys,
+                                          installed_tokens,
+                                          str(row.get("sha256") or ""), installed_hashes))
             outer = theme.RoundedFrame(frame, radius=12, fill=PANEL, border=LINE_SOFT, padding=1)
             outer.pack(fill="x", pady=3)
             line = tk.Frame(outer.body, bg=PANEL)
@@ -4112,8 +4117,12 @@ class App:
             tk.Label(info, text=row.get("name"), bg=PANEL, fg=TEXT,
                      font=(FONT_BOLD, BODY_PX, "bold"), anchor="w").pack(fill="x")
             reason = self._archive_reason(row.get("error") or "")
-            meta_text = (f"{row.get('size_text')} · мод" if row.get("valid")
-                         else f"{row.get('size_text')} · не похоже на мод: {reason}")
+            if not row.get("valid"):
+                meta_text = f"{row.get('size_text')} · не похоже на мод: {reason}"
+            elif row.get("kind") == "bundle":
+                meta_text = f"{row.get('size_text')} · архив с несколькими модами"
+            else:
+                meta_text = f"{row.get('size_text')} · мод"
             tk.Label(info, text=meta_text, bg=PANEL, fg=DIM, font=(FONT, CAPTION_PX),
                      anchor="w", wraplength=520, justify="left").pack(fill="x")
             badges_needed = (not row.get("valid")) or already
@@ -4158,7 +4167,8 @@ class App:
         def work() -> None:
             try:
                 result = self.api.post("/api/install-file", {"path": row["path"]})
-                text = "Уже установлен" if result.get("status") == "duplicate" else "Установлено"
+                text = ("Уже установлен" if result.get("status") == "duplicate"
+                        else result.get("message") or "Установлено")
                 self.root.after(0, lambda: (self.set_status(text), self.render_inbox()))
             except Exception as exc:  # noqa: BLE001
                 self.root.after(0, lambda: self.set_status(f"Ошибка: {exc}"))
