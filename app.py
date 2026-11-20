@@ -561,7 +561,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not target.exists():
                     self._error("Файл не найден")
                     return
-                result = installer.install_archive(target)
+                result = installer.install_archive(
+                    target, move_archive=bool(config.load().get("move_from_downloads")))
                 self._json({"ok": result["status"] in ("installed", "duplicate"), **result})
                 if result["status"] == "installed":
                     HUB.emit("installed", f"Установлено: {result['installed']['title']}")

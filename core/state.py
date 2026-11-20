@@ -147,6 +147,8 @@ class Hub:
             self._baseline_dir = str(folder).lower()
             self._seen.clear()
             self._stable.clear()
+            if cfg.get("auto_install", True) and cfg.get("install_existing", True):
+                self._install_existing_async()
             return
 
         fresh: list[Path] = []
@@ -183,6 +185,16 @@ class Hub:
                 # файл ещё пишется или недокачан — вернёмся к нему на следующем круге
                 self._stable.pop(str(entry).lower(), None)
                 self._seen.pop(str(entry).lower(), None)
+
+    def _install_existing_async(self) -> None:
+        """Поставить архивы, которые лежали в «Загрузках» до запуска."""
+        cutoff = time.time() - 14 * 86400
+        ready = [item for item in self.inbox()
+                 if item.get("valid") and int(item.get("modified") or 0) >= cutoff]
+        if not ready:
+            return
+        self.emit("inbox", f"Ставлю архивы, скачанные до запуска BeamHub: {len(ready)}")
+        threading.Thread(target=self._install_all_worker, args=(ready,), daemon=True).start()
 
     def _handle_new_archive(self, path: Path, cfg: dict) -> bool:
         """True — файл обработан (или окончательно отброшен), False — попробуем ещё раз."""
@@ -320,6 +332,10 @@ class Hub:
                 info = cached[1]
             else:
                 info = installer.inspect_archive(entry)
+                try:
+                    info["sha256"] = installer.sha256_file(entry)
+                except OSError:
+                    info["sha256"] = ""
                 self._inbox_cache[key] = (signature, info)
             items.append({
                 "path": str(entry),
@@ -330,6 +346,7 @@ class Hub:
                 "kind": info.get("kind", "other"),
                 "valid": info.get("valid", False),
                 "error": info.get("error", ""),
+                "sha256": info.get("sha256", ""),
             })
         items.sort(key=lambda x: x["modified"], reverse=True)
         return items

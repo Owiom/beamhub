@@ -4089,12 +4089,20 @@ class App:
         except Exception:  # noqa: BLE001
             library_items = []
         installed_names = {str(item.get("filename") or "").lower() for item in library_items}
+        installed_hashes = {str(item.get("sha256") or "").lower() for item in library_items}
+        installed_hashes.discard("")
         installed_keys = {title_key(item.get("title") or item.get("filename") or "")
                           for item in library_items}
         installed_keys.discard("")
+        if items:
+            tk.Label(frame, text="Архивы, скачанные при работающем BeamHub, ставятся сами; "
+                                 "старые — кнопкой «Установить все» или по одному.",
+                     bg=BG, fg=DIM, font=(FONT, CAPTION_PX), anchor="w",
+                     wraplength=1100, justify="left").pack(fill="x", pady=(0, 6))
         for row in items:
             already = (str(row.get("name") or "").lower() in installed_names
-                       or title_key(row.get("name") or "") in installed_keys)
+                       or title_key(row.get("name") or "") in installed_keys
+                       or str(row.get("sha256") or "").lower() in installed_hashes)
             outer = theme.RoundedFrame(frame, radius=12, fill=PANEL, border=LINE_SOFT, padding=1)
             outer.pack(fill="x", pady=3)
             line = tk.Frame(outer.body, bg=PANEL)
@@ -4190,6 +4198,11 @@ class App:
         self._toggle_row(behavior, "Ставить новые архивы из «Загрузок» автоматически",
                          auto_var,
                          "BeamHub сам установит архив, скачанный из каталога.")
+        existing_var = tk.BooleanVar(value=bool(settings.get("install_existing", True)))
+        self._setting_vars["install_existing"] = existing_var
+        tk.Frame(behavior, bg=LINE_SOFT, height=1).pack(fill="x", padx=12)
+        self._toggle_row(behavior, "Ставить архивы, скачанные до запуска BeamHub",
+                         existing_var, "Иначе их нужно ставить вручную в «Загрузках».")
         tk.Frame(behavior, bg=LINE_SOFT, height=1).pack(fill="x", padx=12)
         move_var = tk.BooleanVar(value=bool(settings.get("move_from_downloads", False)))
         self._setting_vars["move_from_downloads"] = move_var

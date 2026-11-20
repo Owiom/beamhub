@@ -66,6 +66,40 @@ def _common_prefix(names: list[str]) -> str:
     return first
 
 
+JUNK_NAMES = {"__macosx", ".ds_store", "thumbs.db", "desktop.ini", ".git", ".idea"}
+
+
+def _clean_names(names: list[str]) -> list[str]:
+    """Убираем служебный мусор архива (macOS, Windows, IDE)."""
+    cleaned = []
+    for name in names:
+        parts = [part.lower() for part in name.split("/") if part]
+        if any(part in JUNK_NAMES for part in parts):
+            continue
+        if name.lower().endswith((".ds_store", "thumbs.db", "desktop.ini")):
+            continue
+        cleaned.append(name)
+    return cleaned
+
+
+def _content_prefix(names: list[str]) -> str:
+    """Обёртка вокруг мода: «Silvia S15/» или «mod/extra/», даже если рядом мусор."""
+    best: str | None = None
+    for name in names:
+        parts = name.split("/")
+        for depth, part in enumerate(parts[:-1]):
+            if part.lower() in WRAPPER_OK:
+                prefix = "/".join(parts[:depth])
+                if best is None or len(prefix) < len(best):
+                    best = prefix
+                break
+        if parts[-1].lower() in ("info.json", "mod_info.json") and len(parts) > 1:
+            prefix = "/".join(parts[:-1])
+            if best is None or len(prefix) < len(best):
+                best = prefix
+    return best or ""
+
+
 def inspect_archive(path: Path) -> dict:
     """Что за мод в архиве: карта/машина/приложение и нужно ли убрать обёртку."""
     result = {"valid": False, "kind": "other", "root": "", "files": 0, "size": path.stat().st_size,
@@ -73,7 +107,7 @@ def inspect_archive(path: Path) -> dict:
     if path.suffix.lower() != ".zip":
         return {**result, "error": "not_zip"}
     try:
-        names = _zip_names(path)
+        names = _clean_names(_zip_names(path))
     except (zipfile.BadZipFile, OSError) as exc:
         return {**result, "error": f"bad_zip: {exc}"}
     result["files"] = len(names)
@@ -82,7 +116,7 @@ def inspect_archive(path: Path) -> dict:
     if not _paths_are_safe(names):
         return {**result, "error": "unsafe_paths"}
 
-    prefix = _common_prefix(names)
+    prefix = _content_prefix(names)
     rel = [n[len(prefix) + 1:] for n in names] if prefix else names
     result["root"] = prefix
 
