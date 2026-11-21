@@ -626,12 +626,26 @@ class Handler(BaseHTTPRequestHandler):
                 enrich.start_enrichment()
                 self._json({"ok": True, "added": added})
                 return
+            if path == "/api/open-external":
+                url = (body.get("url") or "").strip()
+                if not security.safe_web_url(url):
+                    self._error("Можно открывать только http(s) и mailto", 400)
+                    return True
+                open_in_browser(url)
+                self._json({"ok": True, "opened": url})
+                return True
             if path == "/api/add-link":
                 url = (body.get("url") or "").strip()
                 if not url.startswith("http"):
                     self._error("Нужна ссылка http(s)")
                     return
                 host = urllib.parse.urlsplit(url).netloc.lower()
+                if "nexusmods.com" in host:
+                    self._json({"ok": False, "external": True, "url": url,
+                                "error": "Nexus Mods не разрешает автоматическую загрузку — "
+                                         "открыл страницу в браузере. Скачайте файл, "
+                                         "BeamHub поставит его сам."})
+                    return
                 if "playground.ru" in host:
                     mod = playground.parse_url(url)
                 else:

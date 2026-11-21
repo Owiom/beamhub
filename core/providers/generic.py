@@ -27,6 +27,11 @@ def guess_category(url: str, title: str, html: str) -> str:
 
 
 def parse_url(url: str) -> dict:
+    host = urlsplit(url).netloc.lower()
+    if "nexusmods.com" in host:
+        raise RuntimeError(
+            "Nexus Mods не разрешает автоматическое чтение страниц. "
+            "Откройте ссылку в браузере — скачанный файл BeamHub поставит сам.")
     resp = fetch(url, timeout=30)
     if not resp.ok:
         raise RuntimeError(f"Страница недоступна (HTTP {resp.status})")

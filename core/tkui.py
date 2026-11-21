@@ -4621,6 +4621,11 @@ class App:
         def work() -> None:
             try:
                 data = self.api.post("/api/add-link", {"url": url.strip()})
+                if data.get("external"):
+                    self.api.post("/api/open-external", {"url": data.get("url") or url.strip()})
+                    message = data.get("error") or "Открыл страницу в браузере"
+                    self.root.after(0, lambda: self.set_status(message))
+                    return
                 if not data.get("ok"):
                     message = data.get("error") or "Не удалось добавить мод"
                     self.root.after(0, lambda: self.set_status(f"Ошибка: {message}"))
