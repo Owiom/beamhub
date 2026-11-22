@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import re
 import threading
 import time
@@ -168,6 +169,13 @@ class App:
         self.coll_kind = "popular"
 
         root.title(f"BeamHub {VERSION} — каталог модов BeamNG.drive")
+        icon = self._app_icon()
+        if icon is not None:
+            try:
+                root.iconbitmap(default=str(icon))
+            except Exception:  # noqa: BLE001
+                pass
+        root.protocol("WM_DELETE_WINDOW", self.on_quit)
         root.tk.call("tk", "scaling", display.ui_scale() * 96.0 / 72.0)
         root.geometry(f"{display.px(1400)}x{display.px(920)}")
         root.minsize(display.px(1180), display.px(720))
@@ -183,6 +191,17 @@ class App:
         self.root.after(5000, lambda: self.check_updates(silent=True))
         self.root.after(1500, self._lang_tick)
         threading.Thread(target=self._restore_session, daemon=True).start()
+
+
+    @staticmethod
+    def _app_icon():
+        """Путь к beamhub.ico: рядом с exe (_MEIPASS) или в корне проекта."""
+        for base in (Path(getattr(sys, "_MEIPASS", "")),
+                     Path(__file__).resolve().parent.parent):
+            candidate = base / "beamhub.ico"
+            if candidate.exists():
+                return candidate
+        return None
 
     # ---------------------------------------------------------------- стиль
     def _styles(self) -> None:
@@ -298,11 +317,6 @@ class App:
         theme.RoundButton(actions, "＋ Ссылка", self.on_add_link, height=36, font=(FONT, BODY_PX),
                           bg=PANEL, fg=TEXT, hover=SURFACE_3, border=LINE,
                           border_hover=BORDER_STRONG).pack(side="right", padx=(0, 8))
-        self.fav_button = theme.RoundButton(actions, "★ Избранное", self.toggle_favorites,
-                                            height=36, font=(FONT, BODY_PX), bg=PANEL, fg=TEXT,
-                                            hover=SURFACE_3, border=LINE,
-                                            border_hover=BORDER_STRONG)
-        self.fav_button.pack(side="right", padx=(0, 8))
 
         tools = tk.Frame(self.head, bg=BG)
         tools.pack(fill="x", pady=(14, 0))
@@ -386,6 +400,7 @@ class App:
             self.filter_chips[key] = chip
 
     NAV_ITEMS = (("catalog", "Каталог", "grid"),
+                 ("favorites", "Избранное", "star"),
                  ("collections", "Сборки", "layers"),
                  ("library", "Библиотека", "book"),
                  ("updates", "Обновления", "arrow"),
@@ -427,18 +442,6 @@ class App:
         self.cat_frame = tk.Frame(self.sidebar, bg=SOFT)
         self.cat_frame.pack(fill="both", expand=True, padx=10)
 
-        theme.RoundButton(self.sidebar, "Остановить BeamHub", self.on_quit, height=32,
-                          font=(FONT, CAPTION_PX), bg=SOFT, fg=DANGER_TEXT,
-                          hover=DANGER_SOFT, border=LINE, border_hover=DUP_LINE
-                          ).pack(side="bottom", fill="x", padx=12, pady=(0, 12))
-
-        foot = tk.Frame(self.sidebar, bg=SOFT)
-        foot.pack(side="bottom", fill="x", padx=PAGE_PAD, pady=(0, 10))
-        tk.Label(foot, text="Папка модов", bg=SOFT, fg=DIM, font=(FONT, CAPTION_PX),
-                 anchor="w").pack(anchor="w")
-        self.foot_label = tk.Label(foot, text="", bg=SOFT, fg=MUTED, font=(FONT, CAPTION_PX),
-                                   justify="left", wraplength=224, anchor="w")
-        self.foot_label.pack(fill="x", pady=(2, 0))
 
     def _draw_icon(self, canvas: tk.Canvas, kind: str, color: str, size: int = 18,
                    cx: float | None = None, cy: float | None = None,
@@ -690,6 +693,8 @@ class App:
 
     def _paint_fav_button(self) -> None:
         try:
+            if not getattr(self, "fav_button", None):
+                return
             active = bool(self.filter_fav.get())
             self.fav_button.configure(text="★ Избранное")
             self.fav_button.set_palette(bg=(ACCENT_SOFT if active else PANEL),
@@ -825,12 +830,19 @@ class App:
             self._close_page_silent()
         self.view = view
         self._set_active_nav(view)
-        titles = {"catalog": "Каталог модов", "collections": "Сборки", "library": "Библиотека",
+        titles = {"catalog": "Каталог модов", "favorites": "Избранное",
+                  "collections": "Сборки", "library": "Библиотека",
                   "updates": "Обновления", "inbox": "Загрузки", "settings": "Настройки"}
         self._set_header_title(titles[view])
         self._set_header_count("")
         self._sync_header_tools()
-        if view == "catalog":
+        if view == "favorites":
+            self.filter_fav.set(True)
+            self._paint_chips()
+            self.reload()
+        elif view == "catalog":
+            self.filter_fav.set(False)
+            self._paint_chips()
             self.reload()
         elif view == "collections":
             self.render_collections()
@@ -1355,9 +1367,11 @@ class App:
                                           action_text="Обновить каталог", primary=True)
             empty.pack(pady=(88, 40))
             return
+        avail = max(480, self.canvas.winfo_width())
+        card_w = max(IMG_W, (avail - CARD_GAP * (columns - 1)) // columns - CARD_GAP)
         for index, item in enumerate(self.items):
             row, col = divmod(index, columns)
-            card = self._card(frame, item)
+            card = self._card(frame, item, card_w)
             card.grid(row=row, column=col, padx=CARD_GAP // 2, pady=CARD_GAP // 2, sticky="n")
         more_row = (len(self.items) + columns - 1) // columns
         pager = tk.Frame(frame, bg=BG)
@@ -1473,20 +1487,25 @@ class App:
         blob = f"{item.get('title') or ''} {item.get('description') or ''}".lower()
         return bool(re.search(r"russian|русск|русиф|\bru\b", blob))
 
-    def _card(self, parent: tk.Frame, item: dict) -> tk.Frame:
+    def _card(self, parent: tk.Frame, item: dict, width: int | None = None) -> tk.Frame:
         duplicate = bool(item.get("duplicate"))
+        card_w = width or (IMG_W + display.px(18))
         outer = theme.RoundedFrame(parent, radius=16, fill=PANEL,
                                    border=(DUP_LINE if duplicate else LINE_SOFT),
-                                   padding=8, width=IMG_W + display.px(18))
+                                   padding=8, width=card_w)
+        scale = display.ui_scale()
+        inner_w = max(120, card_w - display.px(20))
+        inner_h = max(80, int(inner_w * 9 / 16))
         card = outer.body
-        holder = tk.Frame(card, bg=PANEL, width=IMG_W, height=IMG_H)
+        holder = tk.Frame(card, bg=PANEL, width=inner_w, height=inner_h)
         holder.pack(fill="x")
         holder.pack_propagate(False)  # фиксированная высота, пока картинки нет
         thumb = tk.Label(holder, bg=PANEL, bd=0, text="", fg=MUTED, font=(FONT, 9))
         thumb.pack(fill="both", expand=True)
-        self._set_placeholder(thumb, item)
+        self._set_placeholder(thumb, item,
+                              (max(16, int(inner_w / scale)), max(16, int(inner_h / scale))))
         if item.get("image"):
-            self._request_image(item["image"], thumb, item)
+            self._request_image(item["image"], thumb, item, (inner_w, inner_h), IMG_RADIUS)
         if duplicate:
             sources = ", ".join(SOURCE_NAMES.get(s, s) for s in item.get("duplicate_sources") or [])
             badge_text = f"дубликат · {item.get('duplicate_count')}"
@@ -4807,11 +4826,6 @@ class App:
                                                                     else "info")
                             self.root.after(0, lambda t=text, k=tone: self.toast(t, k))
                         if kind == "inbox_done":
-                            text = (f"Установлено: {event.get('installed', 0)}\n"
-                                    f"Пропущено: {event.get('skipped', 0)}\n"
-                                    f"Ошибок: {event.get('failed', 0)}")
-                            self.root.after(0, lambda t=text: messagebox.showinfo(
-                                "Установка архивов", t))
                             self.root.after(0, self.refresh_all)
                             break
             except Exception:  # noqa: BLE001

@@ -337,6 +337,8 @@ class Hub:
                 except OSError:
                     info["sha256"] = ""
                 self._inbox_cache[key] = (signature, info)
+            if info.get("sha256") and db.installed_by_hash(info["sha256"]):
+                continue
             items.append({
                 "path": str(entry),
                 "name": entry.name,
